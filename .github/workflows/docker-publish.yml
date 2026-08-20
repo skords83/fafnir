@@ -17,9 +17,13 @@ jobs:
 
       - run: npm ci
 
-      - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm test
+      # Type-checking runs as part of `next build` (in the Docker build
+      # below), not here: Next 16's typed-route ambient types (e.g.
+      # `LayoutProps`) only exist after a build/dev run has generated
+      # .next/types, so a standalone `tsc --noEmit` here would fail on a
+      # clean checkout even though the code is correct.
 
   build:
     needs: test
