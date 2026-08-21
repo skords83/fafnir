@@ -2,23 +2,13 @@ import { db } from '@/db/client';
 import { accounts } from '@/db/schema';
 import { ImportForm } from './import-form';
 
-export const metadata = {
-  title: 'CSV Import',
-};
-
 export default async function ImportPage() {
-  const allAccounts = await db.select().from(accounts).orderBy(accounts.name);
+  const allAccounts = await db.select({ id: accounts.id, name: accounts.name }).from(accounts);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">CSV Import</h1>
-        <p className="text-gray-600 mt-2">Postbank-Exporte in Ihre Konten importieren.</p>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <ImportForm accounts={allAccounts} />
-      </div>
+    <div className="mx-auto max-w-lg space-y-6">
+      <h1 className="text-xl font-semibold text-foreground">CSV-Import</h1>
+      <ImportForm accounts={allAccounts} />
     </div>
   );
 }
