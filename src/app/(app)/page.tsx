@@ -5,8 +5,13 @@ import { accounts, balanceSnapshots } from '@/db/schema';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AccountCard } from '@/components/dashboard/account-card';
+import { requireSession } from '@/lib/session';
+
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
+  await requireSession();
+
   const allAccounts = await db.select().from(accounts);
 
   if (allAccounts.length === 0) {

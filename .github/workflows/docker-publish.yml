@@ -25,6 +25,11 @@ jobs:
       # .next/types, so a standalone `tsc --noEmit` here would fail on a
       # clean checkout even though the code is correct.
 
+      # Mirrors the Dockerfile builder stage's placeholder data/ dir: the DB
+      # client opens a SQLite file eagerly at module scope, so `next build`
+      # needs *some* data/ directory to open a throwaway DB in.
+      - run: mkdir -p data && npx next build
+
   build:
     needs: test
     runs-on: ubuntu-latest

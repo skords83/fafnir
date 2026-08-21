@@ -1,5 +1,7 @@
 node_modules
 .next
+# The builder stage creates its own empty placeholder data/ dir at build
+# time (see Dockerfile) so a live host data/ directory is never baked in.
 data
 .git
 .env*

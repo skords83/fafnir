@@ -33,7 +33,7 @@ async function freshImports() {
   const schema = await import('@/db/schema');
   const { migrate } = await import('drizzle-orm/better-sqlite3/migrator');
   migrate(db, { migrationsFolder: './drizzle' });
-  const { runImport } = await import('./actions');
+  const { runImport } = await import('./import-runner');
   return { db, schema, runImport };
 }
 
@@ -86,6 +86,42 @@ describe('runImport', () => {
 
     const storedTransactions = await db.select().from(schema.transactions);
     expect(storedTransactions).toHaveLength(2);
+
+    const storedSnapshots = await db.select().from(schema.balanceSnapshots);
+    expect(storedSnapshots).toHaveLength(1);
+  });
+
+  test('two rows that hash identically within one CSV do not crash the import', async () => {
+    const { db, schema, runImport } = await freshImports();
+
+    const [account] = await db
+      .insert(schema.accounts)
+      .values({ name: 'Girokonto', currency: 'EUR', createdAt: new Date() })
+      .returning();
+
+    // Two same-day standing orders to the same counterparty with the same
+    // purpose and Kundenreferenz=NOTPROVIDED hash identically (the hash falls
+    // back to purpose when no real reference is present).
+    const csv = [
+      'Umsätze',
+      'Konto;Filial-/Kontonummer;IBAN;Währung',
+      'Girokonto;1234567890;DE12345678901234567890;EUR',
+      '',
+      '1.8.2026 - 20.8.2026',
+      'Letzter Kontostand;;;;1234,56;EUR',
+      'Die dargestellten Umsätze sind vorläufig.',
+      HEADER,
+      '3.8.2026;3.8.2026;Dauerauftrag;Miete Verwaltung;Miete August;;;NOTPROVIDED;;;;-500,00;;1;0;;;EUR',
+      '3.8.2026;3.8.2026;Dauerauftrag;Miete Verwaltung;Miete August;;;NOTPROVIDED;;;;-500,00;;1;0;;;EUR',
+      '',
+    ].join('\n');
+
+    const result = await runImport({ accountId: account.id, filename: 'dupes.csv', csvText: csv });
+
+    expect(result).toEqual({ status: 'success', imported: 1, duplicates: 1 });
+
+    const storedTransactions = await db.select().from(schema.transactions);
+    expect(storedTransactions).toHaveLength(1);
   });
 
   test('a structurally broken CSV returns a graceful error instead of throwing', async () => {

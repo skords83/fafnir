@@ -2,7 +2,8 @@
 
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
-import { importCsv, type ImportState } from './actions';
+import { importCsv } from './actions';
+import type { ImportState } from './import-runner';
 
 const initialState: ImportState = { status: 'idle' };
 

@@ -21,6 +21,12 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# src/db/client.ts opens the SQLite file eagerly at module scope, and Next.js
+# evaluates page modules during "Collecting page data" even for dynamic
+# routes. .dockerignore excludes data/, so create an empty placeholder here —
+# the build opens (and discards) a throwaway DB in it; the real DB is
+# mounted at runtime via the volume below, unaffected.
+RUN mkdir -p /app/data
 RUN npm run build
 
 # ---- prod-deps: production-only dependencies, same native build ----
