@@ -32,6 +32,7 @@ RUN npm ci --omit=dev
 
 # ---- runner: production image ----
 FROM base AS runner
+RUN apk add --no-cache su-exec
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -48,8 +49,12 @@ COPY --from=builder /app/scripts ./scripts
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 VOLUME /app/data
 
-USER nextjs
+# Stays root here on purpose: a bind-mounted host directory at /app/data
+# overrides the ownership set above with whatever the host gave it (root, if
+# Docker auto-created it on a fresh host). The entrypoint fixes that up on
+# every boot before dropping to the unprivileged nextjs user.
 EXPOSE 3000
 ENV DATABASE_PATH=/app/data/fafnir.db
 
+ENTRYPOINT ["scripts/docker-entrypoint.sh"]
 CMD ["sh", "-c", "node scripts/migrate.mjs && node_modules/.bin/next start -p 3000 -H 127.0.0.1"]

@@ -37,7 +37,15 @@ Analog zur family_app-Konvention:
 ```
 
 `data/`, `tailscale/state/` und `tailscale/config/` werden beim ersten Start
-automatisch von Docker angelegt, wenn sie noch nicht existieren.
+automatisch von Docker angelegt, wenn sie noch nicht existieren — als root,
+da Docker sie anlegt, nicht der Container-Prozess. Der Docker-Entrypoint
+(`scripts/docker-entrypoint.sh`) korrigiert die Besitzrechte von `/app/data`
+bei jedem Boot selbst, bevor er zum unprivilegierten `nextjs`-User wechselt;
+hier ist also kein manuelles `chown` nötig.
+
+`tailscale/config/serve-config.json` dagegen muss **vor dem ersten Start**
+existieren (siehe Schritt 3) — ohne sie startet der Tailscale-Sidecar zwar,
+proxied aber nichts zur App.
 
 ## 3. `serve-config.json` anpassen
 
