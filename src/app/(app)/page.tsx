@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gte } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts, balanceSnapshots } from '@/db/schema';
+import { accounts, balanceSnapshots, transactions } from '@/db/schema';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AccountCard } from '@/components/dashboard/account-card';
 import { requireSession } from '@/lib/session';
+import { computeMonthToDateTrend } from '@/lib/trend';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,9 @@ export default async function DashboardPage() {
     );
   }
 
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
   const cards = await Promise.all(
     allAccounts.map(async (account) => {
       const history = await db
@@ -35,19 +39,27 @@ export default async function DashboardPage() {
 
       const currentBalanceCents = history.length > 0 ? history[history.length - 1].balanceCents : 0;
 
-      return { account, history, currentBalanceCents };
+      const monthToDateTransactions = await db
+        .select({ bookingDate: transactions.bookingDate, amountCents: transactions.amountCents })
+        .from(transactions)
+        .where(and(eq(transactions.accountId, account.id), gte(transactions.bookingDate, monthStart)));
+
+      const trend = computeMonthToDateTrend(currentBalanceCents, monthToDateTransactions, now);
+
+      return { account, history, currentBalanceCents, trend };
     })
   );
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {cards.map(({ account, history, currentBalanceCents }) => (
+      {cards.map(({ account, history, currentBalanceCents, trend }) => (
         <Link key={account.id} href={`/accounts/${account.id}`} className="block">
           <AccountCard
             accountName={account.name}
             currency={account.currency}
             currentBalanceCents={currentBalanceCents}
             history={history}
+            trend={trend}
           />
         </Link>
       ))}
