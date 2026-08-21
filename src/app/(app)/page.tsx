@@ -42,13 +42,14 @@ export default async function DashboardPage() {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {cards.map(({ account, history, currentBalanceCents }) => (
-        <AccountCard
-          key={account.id}
-          accountName={account.name}
-          currency={account.currency}
-          currentBalanceCents={currentBalanceCents}
-          history={history}
-        />
+        <Link key={account.id} href={`/accounts/${account.id}`} className="block">
+          <AccountCard
+            accountName={account.name}
+            currency={account.currency}
+            currentBalanceCents={currentBalanceCents}
+            history={history}
+          />
+        </Link>
       ))}
     </div>
   );
