@@ -51,6 +51,10 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/scripts ./scripts
+# scripts/create-user.ts imports ../src/auth (and its relative chain into
+# src/db/) directly via tsx at container runtime, not through the Next.js
+# build output — needs the source present, not just .next.
+COPY --from=builder /app/src ./src
 
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 VOLUME /app/data
