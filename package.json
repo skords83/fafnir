@@ -18,7 +18,7 @@
     "@base-ui/react": "^1.7.0",
     "@better-auth/drizzle-adapter": "^1.7.1",
     "better-auth": "^1.7.1",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^12.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
@@ -47,7 +47,7 @@
     "vitest": "^4.1.11"
   },
   "allowScripts": {
-    "better-sqlite3@13.0.3": true,
+    "better-sqlite3@12.11.1": true,
     "esbuild@0.18.20": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true,
