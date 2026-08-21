@@ -10,10 +10,11 @@ export function SignOutButton() {
   async function handleSignOut() {
     await authClient.signOut();
     router.push('/login');
+    router.refresh();
   }
 
   return (
-    <Button onClick={handleSignOut} variant="ghost" size="sm">
+    <Button onClick={handleSignOut} variant="outline" size="sm">
       Abmelden
     </Button>
   );
