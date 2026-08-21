@@ -1,3 +1,5 @@
+import { normalizeMerchantName } from './merchant-name';
+
 export interface TransactionDisplay {
   /** Bold primary line — the counterparty, or a name recovered from the purpose when it's blank. */
   title: string;
@@ -44,12 +46,17 @@ function cleanContext(text: string): string | null {
  * recognizable by the Folgenr./Verfalld. markers. When that shape is present, splitting on
  * the first "/" recovers a clean merchant name; otherwise the purpose is shown as-is, with
  * only the explicit noise patterns (Folgenr./Verfalld./timestamp) stripped.
+ *
+ * Wherever the title is a merchant name (the counterparty, or a name recovered from a
+ * card-terminal purpose) it's run through `normalizeMerchantName` to turn raw ALL-CAPS
+ * export data into Title Case, display-only — free-text purposes and the stored row are
+ * left untouched.
  */
 export function deriveTransactionDisplay(tx: { counterparty: string | null; purpose: string | null }): TransactionDisplay {
   const purpose = tx.purpose && tx.purpose.trim() !== '' ? tx.purpose.trim() : null;
 
   if (tx.counterparty && tx.counterparty.trim() !== '') {
-    const title = tx.counterparty.trim();
+    const title = normalizeMerchantName(tx.counterparty.trim());
     const context = purpose ? cleanContext(purpose) : null;
     return { title, context };
   }
@@ -62,9 +69,10 @@ export function deriveTransactionDisplay(tx: { counterparty: string | null; purp
   const slashIndex = purpose.indexOf('/');
 
   if (isCardTerminalShape && slashIndex !== -1) {
-    const title = purpose.slice(0, slashIndex).trim();
+    const rawTitle = purpose.slice(0, slashIndex).trim();
+    const title = rawTitle !== '' ? normalizeMerchantName(rawTitle) : stripTerminalNoise(purpose);
     const context = cleanContext(purpose.slice(slashIndex + 1));
-    return { title: title !== '' ? title : stripTerminalNoise(purpose), context };
+    return { title, context };
   }
 
   return { title: stripTerminalNoise(purpose), context: null };

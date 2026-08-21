@@ -11,13 +11,13 @@ describe('deriveTransactionDisplay', () => {
     expect(result).toEqual({ title: 'Musterfirma GmbH', context: 'Rechnung 2026-057' });
   });
 
-  test('recovers a merchant name from a card-terminal purpose with an address', () => {
+  test('recovers a merchant name from a card-terminal purpose with an address, title-cased', () => {
     const result = deriveTransactionDisplay({
       counterparty: null,
       purpose: 'REWE SAGT DANKE/Musterstr. 1/Musterstadt/DE 18-08-2026T18:43:20 Folgenr. 06 Verfalld. 1228',
     });
 
-    expect(result.title).toBe('REWE SAGT DANKE');
+    expect(result.title).toBe('Rewe Sagt Danke');
     expect(result.context).toBe('Musterstr. 1 · Musterstadt');
   });
 
@@ -37,8 +37,17 @@ describe('deriveTransactionDisplay', () => {
       purpose: 'REWE SAGT DANKE. 12345678/Musterstr. 1/Musterstadt /DE 18-08-2026T18:43:20 Folgenr. 06 Verfalld. 1228',
     });
 
-    expect(result.title).toBe('REWE Markt GmbH');
+    expect(result.title).toBe('Rewe Markt GmbH');
     expect(result.context).toBe('REWE SAGT DANKE. 12345678 · Musterstr. 1 · Musterstadt');
+  });
+
+  test('normalizes an all-caps counterparty to Title Case while keeping a legal suffix canonical', () => {
+    const result = deriveTransactionDisplay({
+      counterparty: 'AMAZON PAYMENTS EUROPE S.C.A.',
+      purpose: null,
+    });
+
+    expect(result.title).toBe('Amazon Payments Europe S.C.A.');
   });
 
   test('drops a redundant trailing amount echo and reference codes without an address shape', () => {
