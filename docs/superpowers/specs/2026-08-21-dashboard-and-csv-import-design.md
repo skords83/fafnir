@@ -34,24 +34,37 @@ Explizit außerhalb des Scopes: Kategorisierungsregeln-UI, Transaktionsliste/
 
 ## 1. Routen & Auth
 
-- **NextAuth v5** (`next-auth@beta`), Credentials-Provider, JWT-Session-
-  Strategie. Kein DB-Adapter — ein einziger Benutzer aus Env-Vars
-  (`FAFNIR_USERNAME`, `FAFNIR_PASSWORD_HASH`). Ein Einmal-Skript
-  (`scripts/hash-password.mjs`) erzeugt den Passwort-Hash.
+- **Better Auth** (`better-auth` + `@better-auth/drizzle-adapter`),
+  E-Mail/Passwort-Login. Ein einziger Benutzer, angelegt über ein
+  Einmal-Seed-Skript (`scripts/create-user.ts`, ruft
+  `auth.api.signUpEmail()` auf), keine öffentliche Registrierungs-UI.
   - *Alternativen erwogen:* handgestrickte Cookie-Session (kein neuer
     Dependency, aber mehr Eigenwartung) und HTTP-Basic-Auth (am einfachsten,
-    aber kein sauberes Login/Logout). Nutzer hat sich bewusst für NextAuth
-    entschieden.
-- Route-Handler `src/app/api/auth/[...nextauth]/route.ts` + zentrale
-  `src/auth.ts`-Konfiguration (Standard-Auth.js-App-Router-Pattern).
-- `middleware.ts` schützt alle Routen außer `/api/auth/*` und `/login`,
-  leitet nicht eingeloggte Requests zu `/login` um.
-- Seiten: `/login` (Formular, `signIn("credentials", …)`), `/` (Dashboard,
-  geschützt), `/import` (CSV-Upload, geschützt).
-- Vor der Implementierung: aktuelle Auth.js-v5-Doku prüfen statt sich auf
-  ggf. veraltetes Trainingswissen zu verlassen (API hat sich zwischen v4 und
-  v5 stark verändert). Ebenso `node_modules/next/dist/docs/` für aktuelle
-  Next.js-16-App-Router-Konventionen konsultieren (siehe AGENTS.md).
+    aber kein sauberes Login/Logout). Nutzer hat sich zunächst bewusst für
+    NextAuth (Auth.js) entschieden — **Korrektur während der
+    Implementierungsplanung:** Auth.js/NextAuth befindet sich seit
+    September 2025 im Wartungsmodus (Team ist zu Better Auth gewechselt,
+    siehe https://github.com/nextauthjs/next-auth/discussions/13252 und
+    https://better-auth.com/blog/authjs-joins-better-auth). Dem Nutzer
+    vorgelegt, der sich daraufhin für den Wechsel zu Better Auth
+    entschieden hat.
+- Schema (`user`, `session`, `account`, `verification`) wird per Better-Auth-
+  CLI generiert (`npx auth@latest generate --config ./src/auth.ts --output
+  ./src/db/auth-schema.ts`), nicht von Hand geschrieben.
+- Route-Handler `src/app/api/auth/[...all]/route.ts` (`toNextJsHandler(auth)`)
+  + zentrale `src/auth.ts`-Konfiguration (`betterAuth({...})`, `nextCookies()`
+  als letztes Plugin).
+- `src/proxy.ts` schützt alle Routen außer `/api/auth/*` und `/login`,
+  leitet nicht eingeloggte Requests zu `/login` um (optimistischer Check via
+  `getSessionCookie()`; echte Validierung via `auth.api.getSession()` in
+  jeder Server Action, siehe Next.js Server-Actions-Sicherheitsmodell:
+  jede Server Action ist ein öffentlich erreichbarer POST-Endpunkt).
+  - **Korrektur während der Implementierungsplanung:** Next.js 16 hat
+    `middleware.ts` zugunsten von `proxy.ts` (exportierte Funktion muss
+    `proxy` heißen, nicht `middleware`) abgelöst — dokumentierter Breaking
+    Change, siehe AGENTS.md-Hinweis zur Next.js-Doku-Prüfpflicht.
+- Seiten: `/login` (Formular, `authClient.signIn.email(...)`), `/`
+  (Dashboard, geschützt), `/import` (CSV-Upload, geschützt).
 
 ## 2. Dashboard (`/`)
 
@@ -102,8 +115,13 @@ Explizit außerhalb des Scopes: Kategorisierungsregeln-UI, Transaktionsliste/
 
 ## Offene Punkte für den Implementierungsplan
 
-- Genaue NextAuth-v5-Konfiguration (Cookie-Name, Session-Dauer) anhand der
-  aktuellen Doku statt hier vorwegzunehmen.
+- ~~Genaue NextAuth-v5-Konfiguration~~ — erledigt: Wechsel zu Better Auth
+  (siehe Abschnitt 1), genaue Konfiguration ist im Implementierungsplan
+  ausformuliert.
 - Ob `import_batches` einen Status/Fehlerfall-Eintrag bekommt, wenn der
   Import komplett fehlschlägt (Transaktion rollt zurück, kein Batch-Eintrag
-  nötig — zu prüfen anhand des existierenden Schemas).
+  nötig — zu prüfen anhand des existierenden Schemas). **Entschieden:** kein
+  Batch-Eintrag bei Fehlschlag, da `db.transaction()` bei einem Fehler
+  vollständig zurückrollt (better-sqlite3-Semantik) — es gibt nach einem
+  Fehler keinen Teilzustand, der protokolliert werden müsste. Der Fehler
+  wird stattdessen als Rückgabewert der Server Action ans UI gereicht.
