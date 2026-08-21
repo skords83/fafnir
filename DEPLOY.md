@@ -57,7 +57,7 @@ von SABnzbd/homepage nachschauen — gleiches Tailnet, gleiche Domain).
 
 1. Neuen Stack "fafnir" anlegen
 2. Inhalt von `docker-compose.yml` einfügen
-3. `.env` mit dem neuen `TS_AUTHKEY` hinterlegen
+3. `.env` mit dem neuen `TS_AUTHKEY`, `BETTER_AUTH_SECRET`, und `BETTER_AUTH_URL` hinterlegen
 4. `tailscale/config/serve-config.json` mit angepasstem Tailnet-Suffix bereitlegen
 5. Stack starten
 
@@ -69,12 +69,21 @@ von SABnzbd/homepage nachschauen — gleiches Tailnet, gleiche Domain).
   den Next.js-Server-Start
 - Von einem anderen Tailnet-Gerät: `https://fafnir.<TAILNET>.ts.net` aufrufen
 
+## 6. Login-Benutzer anlegen (einmalig)
+
+`tsx` ist eine reguläre Dependency (nicht dev-only), läuft also auch im
+Production-Image. Einmalig, direkt im laufenden Container:
+
+```bash
+docker exec -it -e SEED_USER_EMAIL=du@example.com -e SEED_USER_PASSWORD=ein-echtes-passwort \
+  fafnir npx tsx scripts/create-user.ts
+```
+
+Erwartet: `[create-user] created user du@example.com`. Danach unter
+`https://fafnir.<TAILNET>.ts.net/login` mit diesen Zugangsdaten einloggen.
+
 ## Offen / noch nicht gebaut
 
-- **Login/Auth** ist im Code noch nicht implementiert (Session-Cookie mit
-  Zugangsdaten aus Env-Variablen, siehe Projekt-Briefing). Sobald das steht,
-  kommen die entsprechenden Env-Vars (`AUTH_USERNAME`/`AUTH_PASSWORD`/Secret)
-  zu `docker-compose.yml`/`.env.example` dazu.
 - **Automatisches Redeploy per GitHub Actions** (SSH + `docker compose pull && up`)
   ist in der CI noch nicht aktiv — dafür muss dieser Stack erst einmal existieren.
   Sag Bescheid, dann ergänze ich den Schritt (Muster liegt in family_app bereits vor).

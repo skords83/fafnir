@@ -29,5 +29,7 @@ services:
       - fafnir_tailscale
     environment:
       - DATABASE_PATH=/app/data/fafnir.db
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
     volumes:
       - ./data:/app/data
