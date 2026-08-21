@@ -1,0 +1,33 @@
+services:
+  # Tailscale sidecar: the ONLY thing with a network identity. fafnir itself
+  # joins this container's network namespace (network_mode: service:...)
+  # instead of getting its own — so it has no IP of its own to expose,
+  # correctly or incorrectly, on the LAN or the internet.
+  fafnir_tailscale:
+    image: tailscale/tailscale:latest
+    container_name: fafnir_tailscale
+    restart: unless-stopped
+    hostname: fafnir
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve-config.json
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+      - ./tailscale/config:/config
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  fafnir:
+    image: ghcr.io/skords83/fafnir:latest
+    container_name: fafnir
+    restart: unless-stopped
+    network_mode: service:fafnir_tailscale
+    depends_on:
+      - fafnir_tailscale
+    environment:
+      - DATABASE_PATH=/app/data/fafnir.db
+    volumes:
+      - ./data:/app/data

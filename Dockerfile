@@ -52,4 +52,4 @@ USER nextjs
 EXPOSE 3000
 ENV DATABASE_PATH=/app/data/fafnir.db
 
-CMD ["sh", "-c", "node scripts/migrate.mjs && node_modules/.bin/next start -p 3000 -H 0.0.0.0"]
+CMD ["sh", "-c", "node scripts/migrate.mjs && node_modules/.bin/next start -p 3000 -H 127.0.0.1"]
