@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { and, asc, eq, gte } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts, balanceSnapshots, transactions } from '@/db/schema';
+import { accounts, balanceSnapshots, categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AccountCard } from '@/components/dashboard/account-card';
 import { requireSession } from '@/lib/session';
 import { computeMonthToDateTrend } from '@/lib/trend';
+import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { getMerchantKey } from '@/lib/merchant-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,19 +52,51 @@ export default async function DashboardPage() {
     })
   );
 
+  const [allTransactionsForCategorization, categoryRows, ruleRows] = await Promise.all([
+    db
+      .select({
+        categoryOverrideId: transactions.categoryOverrideId,
+        counterparty: transactions.counterparty,
+        purpose: transactions.purpose,
+      })
+      .from(transactions),
+    db.select().from(categories),
+    db.select().from(merchantCategoryRules),
+  ]);
+
+  const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
+
+  const uncategorizedMerchants = new Set<string>();
+  for (const tx of allTransactionsForCategorization) {
+    if (resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById).source === 'none') {
+      uncategorizedMerchants.add(getMerchantKey(tx));
+    }
+  }
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {cards.map(({ account, history, currentBalanceCents, trend }) => (
-        <Link key={account.id} href={`/accounts/${account.id}`} className="block">
-          <AccountCard
-            accountName={account.name}
-            currency={account.currency}
-            currentBalanceCents={currentBalanceCents}
-            history={history}
-            trend={trend}
-          />
+    <div className="space-y-4">
+      {uncategorizedMerchants.size > 0 && (
+        <Link
+          href="/categorize"
+          className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          {uncategorizedMerchants.size} Gegenpartei{uncategorizedMerchants.size === 1 ? '' : 'en'} unkategorisiert
         </Link>
-      ))}
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {cards.map(({ account, history, currentBalanceCents, trend }) => (
+          <Link key={account.id} href={`/accounts/${account.id}`} className="block">
+            <AccountCard
+              accountName={account.name}
+              currency={account.currency}
+              currentBalanceCents={currentBalanceCents}
+              history={history}
+              trend={trend}
+            />
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
