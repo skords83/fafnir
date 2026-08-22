@@ -2,6 +2,7 @@ import { formatCents, formatDayHeading } from '@/lib/format';
 import { deriveTransactionDisplay } from '@/lib/transaction-display';
 import { groupTransactionsByDay } from '@/lib/transaction-grouping';
 import { cn } from '@/lib/utils';
+import { CategoryBadge } from './category-badge';
 
 export interface TransactionListRow {
   id: number;
@@ -9,6 +10,10 @@ export interface TransactionListRow {
   counterparty: string | null;
   purpose: string | null;
   amountCents: number;
+  merchantKey: string;
+  effectiveCategory: { id: number; name: string } | null;
+  overrideCategoryId: number | null;
+  merchantRuleCategoryId: number | null;
 }
 
 function amountColorClass(amountCents: number): string {
@@ -17,7 +22,15 @@ function amountColorClass(amountCents: number): string {
   return 'text-foreground';
 }
 
-function TransactionRow({ tx, currency }: { tx: TransactionListRow; currency: string }) {
+function TransactionRow({
+  tx,
+  currency,
+  categories,
+}: {
+  tx: TransactionListRow;
+  currency: string;
+  categories: { id: number; name: string }[];
+}) {
   const { title, context } = deriveTransactionDisplay(tx);
 
   return (
@@ -29,11 +42,27 @@ function TransactionRow({ tx, currency }: { tx: TransactionListRow; currency: st
         </span>
       </div>
       {context && <p className="mt-0.5 truncate text-xs text-muted-foreground">{context}</p>}
+      <CategoryBadge
+        transactionId={tx.id}
+        merchantKey={tx.merchantKey}
+        effectiveCategory={tx.effectiveCategory}
+        overrideCategoryId={tx.overrideCategoryId}
+        merchantRuleCategoryId={tx.merchantRuleCategoryId}
+        categories={categories}
+      />
     </li>
   );
 }
 
-export function TransactionList({ rows, currency }: { rows: TransactionListRow[]; currency: string }) {
+export function TransactionList({
+  rows,
+  currency,
+  categories,
+}: {
+  rows: TransactionListRow[];
+  currency: string;
+  categories: { id: number; name: string }[];
+}) {
   if (rows.length === 0) {
     return <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground">Keine Buchungen.</p>;
   }
@@ -49,7 +78,7 @@ export function TransactionList({ rows, currency }: { rows: TransactionListRow[]
           </h3>
           <ul className="divide-y divide-border rounded-lg border border-border bg-card">
             {group.featured.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} currency={currency} />
+              <TransactionRow key={tx.id} tx={tx} currency={currency} categories={categories} />
             ))}
             {group.collapsed && (
               <li>
@@ -62,7 +91,7 @@ export function TransactionList({ rows, currency }: { rows: TransactionListRow[]
                   </summary>
                   <ul className="divide-y divide-border border-t border-border">
                     {group.collapsed.transactions.map((tx) => (
-                      <TransactionRow key={tx.id} tx={tx} currency={currency} />
+                      <TransactionRow key={tx.id} tx={tx} currency={currency} categories={categories} />
                     ))}
                   </ul>
                 </details>
