@@ -11,8 +11,6 @@ export const accounts = sqliteTable('accounts', {
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle self-referencing FK requires this to break circular type inference
-  parentId: integer('parent_id').references((): any => categories.id),
 }, (t) => ({
   uniqueName: uniqueIndex('uniq_category_name').on(t.name),
 }));
@@ -34,8 +32,6 @@ export const transactions = sqliteTable('transactions', {
   amountCents: integer('amount_cents').notNull(),
   counterparty: text('counterparty'), // Begünstigter/Auftraggeber, ggf. Abweichender Empfänger
   purpose: text('purpose'),
-  categoryId: integer('category_id').references(() => categories.id),
-  categoryIsManual: integer('category_is_manual', { mode: 'boolean' }).notNull().default(false),
   categoryOverrideId: integer('category_override_id').references(() => categories.id),
   importBatchId: integer('import_batch_id').references(() => importBatches.id),
   externalHash: text('external_hash').notNull(),
@@ -43,18 +39,7 @@ export const transactions = sqliteTable('transactions', {
 }, (t) => ({
   uniqueHash: uniqueIndex('uniq_account_hash').on(t.accountId, t.externalHash),
   byDate: index('idx_booking_date').on(t.bookingDate),
-  byCategory: index('idx_category').on(t.categoryId),
 }));
-
-export const categorizationRules = sqliteTable('categorization_rules', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  categoryId: integer('category_id').notNull().references(() => categories.id),
-  matchField: text('match_field').notNull(), // 'counterparty' | 'purpose'
-  matchType: text('match_type').notNull(), // 'contains' | 'regex' | 'exact'
-  matchValue: text('match_value').notNull(),
-  priority: integer('priority').notNull().default(0),
-  active: integer('active', { mode: 'boolean' }).notNull().default(true),
-});
 
 export const merchantCategoryRules = sqliteTable('merchant_category_rules', {
   id: integer('id').primaryKey({ autoIncrement: true }),

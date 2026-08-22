@@ -22,6 +22,13 @@
       "when": 1787381185126,
       "tag": "0002_add_merchant_category_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787381250151,
+      "tag": "0003_drop_legacy_categorization_scaffolding",
+      "breakpoints": true
     }
   ]
 }
