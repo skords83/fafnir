@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { count, desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts, transactions } from '@/db/schema';
+import { accounts, categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { requireSession } from '@/lib/session';
 import { paginate } from '@/lib/pagination';
+import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { getMerchantKey } from '@/lib/merchant-key';
 import { TransactionList } from '@/components/transactions/transaction-list';
 
 export const dynamic = 'force-dynamic';
@@ -38,13 +40,31 @@ export default async function AccountPage({
 
   const { page, offset, pageSize, totalPages } = paginate(total, Number(pageParam));
 
-  const rows = await db
-    .select()
-    .from(transactions)
-    .where(eq(transactions.accountId, accountId))
-    .orderBy(desc(transactions.bookingDate), desc(transactions.id))
-    .limit(pageSize)
-    .offset(offset);
+  const [rawRows, categoryRows, ruleRows] = await Promise.all([
+    db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.accountId, accountId))
+      .orderBy(desc(transactions.bookingDate), desc(transactions.id))
+      .limit(pageSize)
+      .offset(offset),
+    db.select().from(categories),
+    db.select().from(merchantCategoryRules),
+  ]);
+
+  const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
+
+  const rows = rawRows.map((tx) => {
+    const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
+    const merchantKey = getMerchantKey(tx);
+    return {
+      ...tx,
+      merchantKey,
+      effectiveCategory: resolved.categoryId !== null ? { id: resolved.categoryId, name: resolved.categoryName! } : null,
+      overrideCategoryId: tx.categoryOverrideId,
+      merchantRuleCategoryId: rulesByMerchantKey.get(merchantKey) ?? null,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -55,7 +75,7 @@ export default async function AccountPage({
         <h1 className="mt-2 text-xl font-semibold text-foreground">{account.name}</h1>
       </div>
 
-      <TransactionList rows={rows} currency={account.currency} />
+      <TransactionList rows={rows} currency={account.currency} categories={categoryRows} />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
