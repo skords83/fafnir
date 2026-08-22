@@ -13,7 +13,9 @@ export const categories = sqliteTable('categories', {
   name: text('name').notNull(),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle self-referencing FK requires this to break circular type inference
   parentId: integer('parent_id').references((): any => categories.id),
-});
+}, (t) => ({
+  uniqueName: uniqueIndex('uniq_category_name').on(t.name),
+}));
 
 export const importBatches = sqliteTable('import_batches', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -34,6 +36,7 @@ export const transactions = sqliteTable('transactions', {
   purpose: text('purpose'),
   categoryId: integer('category_id').references(() => categories.id),
   categoryIsManual: integer('category_is_manual', { mode: 'boolean' }).notNull().default(false),
+  categoryOverrideId: integer('category_override_id').references(() => categories.id),
   importBatchId: integer('import_batch_id').references(() => importBatches.id),
   externalHash: text('external_hash').notNull(),
   isManualEntry: integer('is_manual_entry', { mode: 'boolean' }).notNull().default(false),
@@ -52,6 +55,14 @@ export const categorizationRules = sqliteTable('categorization_rules', {
   priority: integer('priority').notNull().default(0),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
 });
+
+export const merchantCategoryRules = sqliteTable('merchant_category_rules', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  merchantKey: text('merchant_key').notNull(),
+  categoryId: integer('category_id').notNull().references(() => categories.id),
+}, (t) => ({
+  uniqueMerchantKey: uniqueIndex('uniq_merchant_key').on(t.merchantKey),
+}));
 
 export const balanceSnapshots = sqliteTable('balance_snapshots', {
   id: integer('id').primaryKey({ autoIncrement: true }),
