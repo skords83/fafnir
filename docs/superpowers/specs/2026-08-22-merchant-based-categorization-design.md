@@ -80,20 +80,54 @@ beide Fälle einheitlich abdecken.
   `transaction-grouping.test.ts`), mit Fixtures aus den echten 102
   importierten Zeilen.
 
+**Performance — kein N+1:** Jede Seite, die Transaktionen mit Kategorie
+anzeigt, lädt `categories` und `merchant_category_rules` **je einmal komplett**
+(beide Tabellen sind klein — eine Zeile pro Kategorie/Gegenpartei-Regel, keine
+Transaktionsmenge) und baut daraus `Map<id, Category>` bzw.
+`Map<merchantKey, categoryId>`. `resolveTransactionCategory()` wird dann pro
+Transaktion rein in-memory gegen diese Maps aufgerufen — kein Query pro
+Zeile. `/accounts/[id]` und `/categorize` (Abschnitt 5) machen damit exakt
+drei Queries insgesamt (Transaktionen, Kategorien, Regeln), unabhängig von
+der Trefferzahl.
+
 ## 3. Mutationen — Server Actions
 
-Neu unter `src/app/(app)/actions/categories.ts`:
+Neu unter `src/app/(app)/actions/categories.ts`. Beide Actions nehmen eine
+diskriminierte Union als Zielwert, damit Setzen, Neu-Anlegen und
+Zurücksetzen dieselbe Action nutzen:
 
-- `setMerchantRule(merchantKey, { categoryId } | { newCategoryName })` —
-  Upsert in `merchant_category_rules`; bei `newCategoryName` wird zuerst die
-  Kategorie angelegt (bei Namenskollision mit dem Unique-Index die
-  bestehende Kategorie wiederverwenden statt Fehler zu werfen).
-- `setTransactionOverride(transactionId, { categoryId } | { newCategoryName })`
-  — setzt nur `category_override_id` auf einer einzelnen Zeile.
+```
+type CategoryTarget =
+  | { type: 'category'; categoryId: number }
+  | { type: 'newCategory'; name: string }
+  | { type: 'clear' }
+```
+
+- `setMerchantRule(merchantKey, target: CategoryTarget)` — bei `category`/
+  `newCategory`: Upsert in `merchant_category_rules` (bei `newCategory`
+  zuerst die Kategorie anlegen; bei Namenskollision mit dem Unique-Index die
+  bestehende Kategorie wiederverwenden statt Fehler zu werfen). Bei `clear`:
+  Regel-Zeile für diesen `merchantKey` löschen (**Kategorie entfernen** —
+  betroffene Buchungen fallen zurück auf "Unkategorisiert", sofern keine
+  Einzel-Overrides bestehen).
+- `setTransactionOverride(transactionId, target: CategoryTarget)` — bei
+  `category`/`newCategory`: setzt `category_override_id` auf dieser einen
+  Zeile. Bei `clear`: setzt `category_override_id` zurück auf `null`
+  (**"Standard (Gegenpartei-Regel verwenden)"** — die Zeile fällt zurück auf
+  die Regel-Auflösung).
 - Beide rufen `revalidatePath` für die betroffenen Seiten (`/`,
   `/accounts/[id]`, `/categorize`) auf.
 - Jede Server Action prüft die Session (`requireSession()`), analog zu den
   bestehenden Actions.
+
+**Multi-User-Frage geprüft, nicht anwendbar:** `accounts`, `transactions`
+und das restliche Schema haben aktuell keine `userId`-Spalte irgendwo —
+`requireSession()` ist ein reiner Login-Gate vor einer sonst
+single-tenant-Anwendung (Auth-Tabellen liegen separat in
+`src/db/auth-schema.ts`). `categories`/`merchant_category_rules` global zu
+halten ist damit konsistent zum bestehenden Modell, keine neue Lücke. Sollte
+Fafnir später Multi-User werden, ist das ein anwendungsweites Redesign, kein
+Nacharbeiten an dieser Funktion.
 
 ## 4. Transaktionsliste — Kategorie-Badge pro Zeile
 
@@ -103,16 +137,29 @@ Neu unter `src/app/(app)/actions/categories.ts`:
 - Jede Zeile zeigt ein dezentes Badge neben/unter dem Gegenpartei-Namen
   (Label der Kategorie, oder "Unkategorisiert" in gedämpfter Farbe) — kleine
   neue Client-Komponente, da Interaktivität nötig ist.
-- Klick auf das Badge klappt die Zeile inline auf (gleiches visuelles Muster
-  wie das bestehende `<details>` für "weitere Buchungen") und zeigt zwei
-  kleine native Formulare:
-  - **"Nur diese Buchung"** → `setTransactionOverride`.
-  - **"Alle Buchungen dieser Gegenpartei"** → `setMerchantRule`.
-  - Beide: natives `<select>` mit bestehenden Kategorien + Option
-    "+ Neue Kategorie anlegen", die bei Auswahl ein Textfeld einblendet.
+- Klick auf das Badge klappt die Zeile inline auf und zeigt zwei kleine
+  native Formulare:
+  - **"Nur diese Buchung"** → `setTransactionOverride`. `<select>` mit
+    bestehenden Kategorien + "+ Neue Kategorie anlegen" (blendet Textfeld
+    ein) + **"Standard (Gegenpartei-Regel verwenden)"** (→ `{ type: 'clear' }`,
+    nur sichtbar/aktiv wenn aktuell ein Override gesetzt ist).
+  - **"Alle Buchungen dieser Gegenpartei"** → `setMerchantRule`. Gleiches
+    Auswahlmuster, zusätzlich **"Kategorie entfernen"** (→
+    `{ type: 'clear' }`, löscht die Regel), vorbelegt mit der aktuellen
+    Regel-Kategorie falls vorhanden.
+- **Aufklapp-Zustand als kontrollierter Client-State, nicht natives
+  `<details>`:** Die Zeile nutzt `useState(isOpen)` in der Client-Komponente
+  statt eines `<details open>`-Elements. Grund: eine Server Action löst
+  `revalidatePath` aus, was den Server-Component-Baum neu rendert; ein rein
+  DOM-natives `<details open>` liefe Gefahr, beim Re-Rendering wieder
+  zuzuklappen bzw. die Scroll-Position zu verschieben. Mit eigenem
+  `isOpen`-State (nur vom Klick auf das Badge gesetzt, nie von den
+  server-gelieferten Props überschrieben) bleibt das Formular nach dem
+  Speichern offen und zeigt die aktualisierte Kategorie aus den neuen Props,
+  bis der Nutzer es selbst schließt.
 - Kein neues UI-Komponenten-Framework — Projekt hat aktuell nur `Button` als
-  UI-Primitive; native `<select>`/`<details>`/`<form>` passen zum
-  bestehenden minimalen Stil.
+  UI-Primitive; native `<select>`/`<form>` (mit eigenem React-State fürs
+  Auf-/Zuklappen) passen zum bestehenden minimalen Stil.
 
 ## 5. Neue Route `/categorize` — Sammelansicht "Unkategorisiert"
 
@@ -133,6 +180,11 @@ Neu unter `src/app/(app)/actions/categories.ts`:
 - Unit-Tests: `resolveTransactionCategory()` (Override gewinnt vor Regel,
   Regel vor "keine", "keine" wenn nichts zutrifft) und `getMerchantKey()`,
   mit Fixtures aus den echten importierten Daten.
+- Unit-Tests für die Server-Action-Zielwerte inkl. `{ type: 'clear' }`:
+  Override-Clear setzt `category_override_id` zurück auf `null` (Zeile
+  fällt zurück auf Regel-Auflösung), Regel-Clear löscht die
+  `merchant_category_rules`-Zeile (betroffene Buchungen fallen zurück auf
+  "Unkategorisiert", sofern kein Einzel-Override besteht).
 - Manuelle Verifikation gegen die echten 102 importierten Transaktionen:
   - Mindestens eine Gegenpartei über `/categorize` einer Regel zuordnen →
     prüfen, dass alle ihre Buchungen in der Transaktionsliste die Kategorie
