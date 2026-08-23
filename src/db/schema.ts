@@ -45,8 +45,9 @@ export const merchantCategoryRules = sqliteTable('merchant_category_rules', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   merchantKey: text('merchant_key').notNull(),
   categoryId: integer('category_id').notNull().references(() => categories.id),
+  purposeContains: text('purpose_contains'),
 }, (t) => ({
-  uniqueMerchantKey: uniqueIndex('uniq_merchant_key').on(t.merchantKey),
+  uniqueMerchantKey: uniqueIndex('uniq_merchant_key').on(t.merchantKey, t.purposeContains),
 }));
 
 export const balanceSnapshots = sqliteTable('balance_snapshots', {

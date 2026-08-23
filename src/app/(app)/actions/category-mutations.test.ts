@@ -56,7 +56,7 @@ describe('applyMerchantRule', () => {
   test('assigning a new category name creates both the category and the rule', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
 
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'newCategory', name: 'Lebensmittel' });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'newCategory', name: 'Lebensmittel' });
 
     const [category] = await db.select().from(schema.categories);
     expect(category.name).toBe('Lebensmittel');
@@ -67,10 +67,10 @@ describe('applyMerchantRule', () => {
 
   test('assigning a category name that already exists reuses it instead of erroring', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'newCategory', name: 'Lebensmittel' });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'newCategory', name: 'Lebensmittel' });
     const [existing] = await db.select().from(schema.categories);
 
-    await applyMerchantRule('Amazon Payments Europe S.C.A.', { type: 'newCategory', name: 'Lebensmittel' });
+    await applyMerchantRule('Amazon Payments Europe S.C.A.', null, { type: 'newCategory', name: 'Lebensmittel' });
 
     const allCategories = await db.select().from(schema.categories);
     expect(allCategories).toHaveLength(1);
@@ -85,8 +85,8 @@ describe('applyMerchantRule', () => {
     const [foodCategory] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
     const [otherCategory] = await db.insert(schema.categories).values({ name: 'Sonstiges' }).returning();
 
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'category', categoryId: foodCategory.id });
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'category', categoryId: otherCategory.id });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'category', categoryId: foodCategory.id });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'category', categoryId: otherCategory.id });
 
     const rules = await db.select().from(schema.merchantCategoryRules);
     expect(rules).toHaveLength(1);
@@ -96,12 +96,80 @@ describe('applyMerchantRule', () => {
   test('clearing a rule deletes it, leaving affected transactions to fall back to uncategorized', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
     const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'category', categoryId: category.id });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'category', categoryId: category.id });
 
-    await applyMerchantRule('Rewe Markt GmbH', { type: 'clear' });
+    await applyMerchantRule('Rewe Markt GmbH', null, { type: 'clear' });
 
     const rules = await db.select().from(schema.merchantCategoryRules);
     expect(rules).toHaveLength(0);
+  });
+
+  test('setting a rule with a specific purpose substring creates a purpose-scoped rule', async () => {
+    const { db, schema, applyMerchantRule } = await freshDb();
+    const [foodCategory] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+
+    await applyMerchantRule('Rewe Markt GmbH', 'groceries', { type: 'category', categoryId: foodCategory.id });
+
+    const rules = await db.select().from(schema.merchantCategoryRules);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toEqual(expect.objectContaining({
+      merchantKey: 'Rewe Markt GmbH',
+      purposeContains: 'groceries',
+      categoryId: foodCategory.id,
+    }));
+  });
+
+  test('different purpose substrings for the same merchant create separate rules', async () => {
+    const { db, schema, applyMerchantRule } = await freshDb();
+    const [foodCategory] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    const [gasCategory] = await db.insert(schema.categories).values({ name: 'Benzin' }).returning();
+
+    await applyMerchantRule('Shell', 'fuel', { type: 'category', categoryId: gasCategory.id });
+    await applyMerchantRule('Shell', 'car wash', { type: 'category', categoryId: foodCategory.id });
+
+    const rules = await db.select().from(schema.merchantCategoryRules);
+    expect(rules).toHaveLength(2);
+    expect(rules).toContainEqual(expect.objectContaining({
+      merchantKey: 'Shell',
+      purposeContains: 'fuel',
+      categoryId: gasCategory.id,
+    }));
+    expect(rules).toContainEqual(expect.objectContaining({
+      merchantKey: 'Shell',
+      purposeContains: 'car wash',
+      categoryId: foodCategory.id,
+    }));
+  });
+
+  test('updating a purpose-specific rule replaces only that rule', async () => {
+    const { db, schema, applyMerchantRule } = await freshDb();
+    const [category1] = await db.insert(schema.categories).values({ name: 'Category1' }).returning();
+    const [category2] = await db.insert(schema.categories).values({ name: 'Category2' }).returning();
+
+    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category1.id });
+    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category2.id });
+
+    const rules = await db.select().from(schema.merchantCategoryRules);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].categoryId).toBe(category2.id);
+    expect(rules[0].purposeContains).toBe('purpose1');
+  });
+
+  test('merchant can have both a fallback rule (null purpose) and purpose-specific rules', async () => {
+    const { db, schema, applyMerchantRule } = await freshDb();
+    const [category1] = await db.insert(schema.categories).values({ name: 'Category1' }).returning();
+    const [category2] = await db.insert(schema.categories).values({ name: 'Category2' }).returning();
+    const [category3] = await db.insert(schema.categories).values({ name: 'Category3' }).returning();
+
+    await applyMerchantRule('Merchant', null, { type: 'category', categoryId: category1.id });
+    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category2.id });
+    await applyMerchantRule('Merchant', 'purpose2', { type: 'category', categoryId: category3.id });
+
+    const rules = await db.select().from(schema.merchantCategoryRules);
+    expect(rules).toHaveLength(3);
+    expect(rules.some((r) => r.purposeContains === null && r.categoryId === category1.id)).toBe(true);
+    expect(rules.some((r) => r.purposeContains === 'purpose1' && r.categoryId === category2.id)).toBe(true);
+    expect(rules.some((r) => r.purposeContains === 'purpose2' && r.categoryId === category3.id)).toBe(true);
   });
 });
 

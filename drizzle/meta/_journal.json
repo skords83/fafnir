@@ -29,6 +29,13 @@
       "when": 1787381250151,
       "tag": "0003_drop_legacy_categorization_scaffolding",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787517458282,
+      "tag": "0004_windy_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }

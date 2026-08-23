@@ -12,9 +12,9 @@ function revalidateCategorizedPages() {
   revalidatePath('/categorize');
 }
 
-export async function setMerchantRule(merchantKey: string, target: CategoryTarget): Promise<void> {
+export async function setMerchantRule(merchantKey: string, purposeContains: string | null, target: CategoryTarget): Promise<void> {
   await requireSession();
-  await applyMerchantRule(merchantKey, target);
+  await applyMerchantRule(merchantKey, purposeContains, target);
   revalidateCategorizedPages();
 }
 

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull, and } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { categories, merchantCategoryRules, transactions } from '@/db/schema';
 
@@ -26,16 +26,23 @@ async function resolveCategoryId(target: AssignTarget): Promise<number> {
 }
 
 /** Sets (or clears) the category rule applied to every transaction from this merchant. */
-export async function applyMerchantRule(merchantKey: string, target: CategoryTarget): Promise<void> {
+export async function applyMerchantRule(merchantKey: string, purposeContains: string | null, target: CategoryTarget): Promise<void> {
   if (target.type === 'clear') {
     await db.delete(merchantCategoryRules).where(eq(merchantCategoryRules.merchantKey, merchantKey));
     return;
   }
   const categoryId = await resolveCategoryId(target);
-  await db
-    .insert(merchantCategoryRules)
-    .values({ merchantKey, categoryId })
-    .onConflictDoUpdate({ target: merchantCategoryRules.merchantKey, set: { categoryId } });
+  // Delete existing rule with the same merchant key and purpose before inserting
+  // This handles the NULL case correctly since SQLite treats multiple NULLs as distinct in UNIQUE constraints
+  await db.delete(merchantCategoryRules).where(
+    and(
+      eq(merchantCategoryRules.merchantKey, merchantKey),
+      purposeContains === null
+        ? isNull(merchantCategoryRules.purposeContains)
+        : eq(merchantCategoryRules.purposeContains, purposeContains)
+    )
+  );
+  await db.insert(merchantCategoryRules).values({ merchantKey, categoryId, purposeContains });
 }
 
 /** Sets (or clears) the category override on exactly one transaction. */
