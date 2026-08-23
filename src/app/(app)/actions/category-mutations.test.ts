@@ -104,72 +104,84 @@ describe('applyMerchantRule', () => {
     expect(rules).toHaveLength(0);
   });
 
-  test('setting a rule with a specific purpose substring creates a purpose-scoped rule', async () => {
+});
+
+describe('applyMerchantRule with purposeContains', () => {
+  test('a purpose-specific rule and the merchant fallback rule coexist independently', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
-    const [foodCategory] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    const [food] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    const [salary] = await db.insert(schema.categories).values({ name: 'Gehalt' }).returning();
 
-    await applyMerchantRule('Rewe Markt GmbH', 'groceries', { type: 'category', categoryId: foodCategory.id });
-
-    const rules = await db.select().from(schema.merchantCategoryRules);
-    expect(rules).toHaveLength(1);
-    expect(rules[0]).toEqual(expect.objectContaining({
-      merchantKey: 'Rewe Markt GmbH',
-      purposeContains: 'groceries',
-      categoryId: foodCategory.id,
-    }));
-  });
-
-  test('different purpose substrings for the same merchant create separate rules', async () => {
-    const { db, schema, applyMerchantRule } = await freshDb();
-    const [foodCategory] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
-    const [gasCategory] = await db.insert(schema.categories).values({ name: 'Benzin' }).returning();
-
-    await applyMerchantRule('Shell', 'fuel', { type: 'category', categoryId: gasCategory.id });
-    await applyMerchantRule('Shell', 'car wash', { type: 'category', categoryId: foodCategory.id });
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', null, {
+      type: 'category',
+      categoryId: food.id,
+    });
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Gehalt', {
+      type: 'category',
+      categoryId: salary.id,
+    });
 
     const rules = await db.select().from(schema.merchantCategoryRules);
     expect(rules).toHaveLength(2);
-    expect(rules).toContainEqual(expect.objectContaining({
-      merchantKey: 'Shell',
-      purposeContains: 'fuel',
-      categoryId: gasCategory.id,
-    }));
-    expect(rules).toContainEqual(expect.objectContaining({
-      merchantKey: 'Shell',
-      purposeContains: 'car wash',
-      categoryId: foodCategory.id,
-    }));
+    expect(rules.find((r) => r.purposeContains === null)?.categoryId).toBe(food.id);
+    expect(rules.find((r) => r.purposeContains === 'Gehalt')?.categoryId).toBe(salary.id);
   });
 
-  test('updating a purpose-specific rule replaces only that rule', async () => {
+  test('assigning a purposeContains that overlaps an existing one for the same merchant throws', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
-    const [category1] = await db.insert(schema.categories).values({ name: 'Category1' }).returning();
-    const [category2] = await db.insert(schema.categories).values({ name: 'Category2' }).returning();
+    const [category] = await db.insert(schema.categories).values({ name: 'Sonstiges' }).returning();
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Schulgeld', {
+      type: 'category',
+      categoryId: category.id,
+    });
 
-    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category1.id });
-    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category2.id });
+    await expect(
+      applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Schulgeld Klasse 3', {
+        type: 'category',
+        categoryId: category.id,
+      })
+    ).rejects.toThrow(/überschneidet sich/);
 
     const rules = await db.select().from(schema.merchantCategoryRules);
     expect(rules).toHaveLength(1);
-    expect(rules[0].categoryId).toBe(category2.id);
-    expect(rules[0].purposeContains).toBe('purpose1');
   });
 
-  test('merchant can have both a fallback rule (null purpose) and purpose-specific rules', async () => {
+  test('re-assigning the exact same purposeContains updates that rule instead of throwing', async () => {
     const { db, schema, applyMerchantRule } = await freshDb();
-    const [category1] = await db.insert(schema.categories).values({ name: 'Category1' }).returning();
-    const [category2] = await db.insert(schema.categories).values({ name: 'Category2' }).returning();
-    const [category3] = await db.insert(schema.categories).values({ name: 'Category3' }).returning();
+    const [food] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    const [other] = await db.insert(schema.categories).values({ name: 'Sonstiges' }).returning();
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Hort', {
+      type: 'category',
+      categoryId: food.id,
+    });
 
-    await applyMerchantRule('Merchant', null, { type: 'category', categoryId: category1.id });
-    await applyMerchantRule('Merchant', 'purpose1', { type: 'category', categoryId: category2.id });
-    await applyMerchantRule('Merchant', 'purpose2', { type: 'category', categoryId: category3.id });
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Hort', {
+      type: 'category',
+      categoryId: other.id,
+    });
 
     const rules = await db.select().from(schema.merchantCategoryRules);
-    expect(rules).toHaveLength(3);
-    expect(rules.some((r) => r.purposeContains === null && r.categoryId === category1.id)).toBe(true);
-    expect(rules.some((r) => r.purposeContains === 'purpose1' && r.categoryId === category2.id)).toBe(true);
-    expect(rules.some((r) => r.purposeContains === 'purpose2' && r.categoryId === category3.id)).toBe(true);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].categoryId).toBe(other.id);
+  });
+
+  test('clearing a purpose-specific rule removes only that rule', async () => {
+    const { db, schema, applyMerchantRule } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', null, {
+      type: 'category',
+      categoryId: category.id,
+    });
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Hort', {
+      type: 'category',
+      categoryId: category.id,
+    });
+
+    await applyMerchantRule('Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', 'Hort', { type: 'clear' });
+
+    const rules = await db.select().from(schema.merchantCategoryRules);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].purposeContains).toBeNull();
   });
 });
 

@@ -1,4 +1,6 @@
-import { eq, isNull, and } from 'drizzle-orm';
+'use server';
+
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { categories, merchantCategoryRules, transactions } from '@/db/schema';
 
@@ -25,24 +27,62 @@ async function resolveCategoryId(target: AssignTarget): Promise<number> {
   return category.id;
 }
 
-/** Sets (or clears) the category rule applied to every transaction from this merchant. */
-export async function applyMerchantRule(merchantKey: string, purposeContains: string | null, target: CategoryTarget): Promise<void> {
+/**
+ * A new (non-null) purposeContains must not be a substring of, or contain as a substring,
+ * any other purposeContains already set for this merchant — in either direction. An exact
+ * match is an update to that same rule, not an overlap. This keeps rule resolution
+ * unambiguous without needing a tiebreak at resolution time (design spec, Fall B2).
+ */
+function assertNoOverlap(existingPurposeContains: (string | null)[], candidate: string): void {
+  for (const existing of existingPurposeContains) {
+    if (existing === null || existing === candidate) continue;
+    if (existing.includes(candidate) || candidate.includes(existing)) {
+      throw new Error(
+        `„${candidate}" überschneidet sich mit der bestehenden Regel „${existing}" für diese Gegenpartei.`
+      );
+    }
+  }
+}
+
+function ruleCondition(merchantKey: string, purposeContains: string | null) {
+  return purposeContains === null
+    ? and(eq(merchantCategoryRules.merchantKey, merchantKey), isNull(merchantCategoryRules.purposeContains))
+    : and(eq(merchantCategoryRules.merchantKey, merchantKey), eq(merchantCategoryRules.purposeContains, purposeContains));
+}
+
+/**
+ * Sets (or clears) the category rule for one merchant. `purposeContains: null` is the
+ * merchant's fallback rule (applies unless a more specific purpose-scoped rule matches);
+ * a non-null value scopes the rule to transactions whose purpose contains that substring.
+ * At most one fallback rule per merchant is guaranteed by updating the existing null-row
+ * in place instead of relying on the DB unique index, which treats every NULL as distinct.
+ */
+export async function applyMerchantRule(
+  merchantKey: string,
+  purposeContains: string | null,
+  target: CategoryTarget
+): Promise<void> {
   if (target.type === 'clear') {
-    await db.delete(merchantCategoryRules).where(eq(merchantCategoryRules.merchantKey, merchantKey));
+    await db.delete(merchantCategoryRules).where(ruleCondition(merchantKey, purposeContains));
     return;
   }
+
   const categoryId = await resolveCategoryId(target);
-  // Delete existing rule with the same merchant key and purpose before inserting
-  // This handles the NULL case correctly since SQLite treats multiple NULLs as distinct in UNIQUE constraints
-  await db.delete(merchantCategoryRules).where(
-    and(
-      eq(merchantCategoryRules.merchantKey, merchantKey),
-      purposeContains === null
-        ? isNull(merchantCategoryRules.purposeContains)
-        : eq(merchantCategoryRules.purposeContains, purposeContains)
-    )
-  );
-  await db.insert(merchantCategoryRules).values({ merchantKey, categoryId, purposeContains });
+  const existingRules = await db
+    .select()
+    .from(merchantCategoryRules)
+    .where(eq(merchantCategoryRules.merchantKey, merchantKey));
+
+  if (purposeContains !== null) {
+    assertNoOverlap(existingRules.map((r) => r.purposeContains), purposeContains);
+  }
+
+  const existing = existingRules.find((r) => r.purposeContains === purposeContains);
+  if (existing) {
+    await db.update(merchantCategoryRules).set({ categoryId }).where(eq(merchantCategoryRules.id, existing.id));
+  } else {
+    await db.insert(merchantCategoryRules).values({ merchantKey, purposeContains, categoryId });
+  }
 }
 
 /** Sets (or clears) the category override on exactly one transaction. */
