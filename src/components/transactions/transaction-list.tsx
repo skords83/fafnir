@@ -14,6 +14,7 @@ export interface TransactionListRow {
   effectiveCategory: { id: number; name: string } | null;
   overrideCategoryId: number | null;
   merchantRuleCategoryId: number | null;
+  merchantRulePurposeContains: string | null;
 }
 
 function amountColorClass(amountCents: number): string {
@@ -48,6 +49,7 @@ function TransactionRow({
         effectiveCategory={tx.effectiveCategory}
         overrideCategoryId={tx.overrideCategoryId}
         merchantRuleCategoryId={tx.merchantRuleCategoryId}
+        merchantRulePurposeContains={tx.merchantRulePurposeContains}
         categories={categories}
       />
     </li>

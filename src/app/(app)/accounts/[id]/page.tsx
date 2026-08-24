@@ -5,7 +5,7 @@ import { db } from '@/db/client';
 import { accounts, categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { requireSession } from '@/lib/session';
 import { paginate } from '@/lib/pagination';
-import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { buildCategoryLookups, findGoverningMerchantRule, resolveTransactionCategory } from '@/lib/category-resolution';
 import { getMerchantKey } from '@/lib/merchant-key';
 import { TransactionList } from '@/components/transactions/transaction-list';
 
@@ -57,12 +57,14 @@ export default async function AccountPage({
   const rows = rawRows.map((tx) => {
     const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
     const merchantKey = getMerchantKey(tx);
+    const governingRule = findGoverningMerchantRule(tx, rulesByMerchantKey);
     return {
       ...tx,
       merchantKey,
       effectiveCategory: resolved.categoryId !== null ? { id: resolved.categoryId, name: resolved.categoryName! } : null,
       overrideCategoryId: tx.categoryOverrideId,
-      merchantRuleCategoryId: rulesByMerchantKey.get(merchantKey) ?? null,
+      merchantRuleCategoryId: governingRule?.categoryId ?? null,
+      merchantRulePurposeContains: governingRule?.purposeContains ?? null,
     };
   });
 

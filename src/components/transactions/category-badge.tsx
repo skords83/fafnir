@@ -12,6 +12,8 @@ export interface CategoryBadgeProps {
   overrideCategoryId: number | null;
   /** The merchant rule's current category for this merchant, independent of this transaction's own override. */
   merchantRuleCategoryId: number | null;
+  /** The merchant rule's current purpose filter for this merchant, if applicable. */
+  merchantRulePurposeContains: string | null;
   categories: { id: number; name: string }[];
 }
 
@@ -21,6 +23,7 @@ export function CategoryBadge({
   effectiveCategory,
   overrideCategoryId,
   merchantRuleCategoryId,
+  merchantRulePurposeContains,
   categories,
 }: CategoryBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -54,7 +57,7 @@ export function CategoryBadge({
               selectedCategoryId={merchantRuleCategoryId}
               showClear={merchantRuleCategoryId !== null}
               clearLabel="Kategorie entfernen"
-              onSubmit={(target) => setMerchantRule(merchantKey, target)}
+              onSubmit={(target) => setMerchantRule(merchantKey, merchantRulePurposeContains, target)}
             />
           </div>
         </div>
