@@ -6,7 +6,7 @@ import type { CategoryBreakdownPoint } from '@/lib/dashboard-stats';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#64748b'];
 
-export function CategoryPieChart({ data }: { data: CategoryBreakdownPoint[] }) {
+export function CategoryPieChart({ data, currency }: { data: CategoryBreakdownPoint[]; currency: string }) {
   if (data.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
@@ -40,11 +40,16 @@ export function CategoryPieChart({ data }: { data: CategoryBreakdownPoint[] }) {
           <Tooltip
             formatter={(value) => {
               if (typeof value === 'number') {
-                return formatCents(Math.round(value * 100), 'EUR');
+                return formatCents(Math.round(value * 100), currency);
               }
               return value;
             }}
-            contentStyle={{ backgroundColor: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', borderRadius: '0.5rem' }}
+            contentStyle={{
+              backgroundColor: 'var(--color-popover)',
+              borderColor: 'var(--color-border)',
+              color: 'var(--color-popover-foreground)',
+              borderRadius: '0.5rem',
+            }}
           />
           <Legend wrapperStyle={{ paddingTop: '10px' }} />
         </PieChart>

@@ -44,35 +44,39 @@ export default async function DashboardPage() {
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-  const [allTransactions, categoryRows, ruleRows, latestSnapshots, recentRawTxs] = await Promise.all([
-    db.select().from(transactions).where(eq(transactions.accountId, account.id)),
-    db.select().from(categories),
-    db.select().from(merchantCategoryRules),
-    db
-      .select({ balanceCents: balanceSnapshots.balanceCents })
-      .from(balanceSnapshots)
-      .where(eq(balanceSnapshots.accountId, account.id))
-      .orderBy(desc(balanceSnapshots.snapshotDate))
-      .limit(1),
-    db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.accountId, account.id))
-      .orderBy(desc(transactions.bookingDate), desc(transactions.id))
-      .limit(5),
-  ]);
+  const [allTransactions, categoryRows, ruleRows, latestSnapshots, recentRawTxs, allTransactionsForBadge] =
+    await Promise.all([
+      db.select().from(transactions).where(eq(transactions.accountId, account.id)),
+      db.select().from(categories),
+      db.select().from(merchantCategoryRules),
+      db
+        .select({ balanceCents: balanceSnapshots.balanceCents })
+        .from(balanceSnapshots)
+        .where(eq(balanceSnapshots.accountId, account.id))
+        .orderBy(desc(balanceSnapshots.snapshotDate))
+        .limit(1),
+      db
+        .select()
+        .from(transactions)
+        .where(eq(transactions.accountId, account.id))
+        .orderBy(desc(transactions.bookingDate), desc(transactions.id))
+        .limit(5),
+      // Unscoped across all accounts — matches /categorize's query so the badge count
+      // stays consistent with the page it links to.
+      db
+        .select({
+          categoryOverrideId: transactions.categoryOverrideId,
+          counterparty: transactions.counterparty,
+          purpose: transactions.purpose,
+        })
+        .from(transactions),
+    ]);
 
   const currentBalanceCents = latestSnapshots.length > 0 ? latestSnapshots[0].balanceCents : 0;
   const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
 
-  // Uncategorized check
-  const uncategorizedMerchants = new Set<string>();
   const resolvedTxsWithCategory = allTransactions.map((tx) => {
     const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
-    const merchantKey = getMerchantKey(tx);
-    if (resolved.source === 'none') {
-      uncategorizedMerchants.add(merchantKey);
-    }
     return {
       amountCents: tx.amountCents,
       bookingDate: tx.bookingDate,
@@ -80,6 +84,20 @@ export default async function DashboardPage() {
       categoryName: resolved.categoryName,
     };
   });
+
+  // Uncategorized badge count — unscoped across all accounts (see allTransactionsForBadge
+  // above), mirroring /categorize's exact "uncategorized merchant" logic so the badge count
+  // matches what that page shows.
+  const uncategorizedMerchants = new Set<string>();
+  for (const tx of allTransactionsForBadge) {
+    if (resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById).source === 'none') {
+      const merchantKey = getMerchantKey(tx);
+      // A merchant with any rule at all is already handled on /categorize's "categorized"
+      // list, not its uncategorized one — keep the same exclusion here.
+      if (rulesByMerchantKey.has(merchantKey)) continue;
+      uncategorizedMerchants.add(merchantKey);
+    }
+  }
 
   // Calculate stats
   const currentMonthSummary = calculateMonthSummary(allTransactions, currentMonthKey);
@@ -159,12 +177,12 @@ export default async function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 text-sm font-medium text-foreground">Einnahmen vs. Ausgaben ({currentYear})</h2>
-          <IncomeExpenseBarChart data={monthlyTrends} />
+          <IncomeExpenseBarChart data={monthlyTrends} currency={account.currency} />
         </div>
 
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 text-sm font-medium text-foreground">Kategorien im aktuellen Monat</h2>
-          <CategoryPieChart data={categoryBreakdown} />
+          <CategoryPieChart data={categoryBreakdown} currency={account.currency} />
         </div>
       </div>
 
