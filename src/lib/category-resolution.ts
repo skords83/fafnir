@@ -46,6 +46,10 @@ export function resolveTransactionCategory(
 /**
  * Finds the governing merchant rule for a transaction:
  * - purpose-scoped rules (substring match) win over the fallback rule,
+ * - among purpose-scoped rules, `buildCategoryLookups` orders them longest-`purposeContains`-first,
+ *   so the most specific matching rule is returned; two independently-typed rules with disjoint
+ *   substrings (neither contains the other) can still both textually match one transaction's
+ *   purpose, in which case the longer one governs by convention, not because overlap was ruled out,
  * - the fallback rule (null purposeContains) is tried if no purpose-scoped rule matches,
  * - returns null if no rule applies.
  */
@@ -97,6 +101,19 @@ export function buildCategoryLookups(
       rulesByMerchantKey.set(row.merchantKey, []);
     }
     rulesByMerchantKey.get(row.merchantKey)!.push({ purposeContains: row.purposeContains, categoryId: row.categoryId });
+  }
+
+  // Deterministic, most-specific-wins ordering: longer purpose substrings are more
+  // specific and are tried first; the fallback rule (null) always comes last. This
+  // matters when two purpose-scoped rules are disjoint (neither substring contains the
+  // other) but could both match one transaction's purpose text — without a stable order,
+  // which one "wins" would depend on unspecified DB row order.
+  for (const rules of rulesByMerchantKey.values()) {
+    rules.sort((a, b) => {
+      if (a.purposeContains === null) return 1;
+      if (b.purposeContains === null) return -1;
+      return b.purposeContains.length - a.purposeContains.length;
+    });
   }
 
   return { categoriesById, rulesByMerchantKey };

@@ -1,5 +1,3 @@
-'use server';
-
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { categories, merchantCategoryRules, transactions } from '@/db/schema';

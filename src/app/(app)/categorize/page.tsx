@@ -37,6 +37,8 @@ export default async function CategorizePage() {
     .map(([merchantKey, txCount]) => ({ merchantKey, txCount }))
     .sort((a, b) => b.txCount - a.txCount);
 
+  const categorizedMerchantKeys = [...rulesByMerchantKey.keys()].sort((a, b) => a.localeCompare(b));
+
   return (
     <div className="space-y-6">
       <div>
@@ -64,6 +66,24 @@ export default async function CategorizePage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {categorizedMerchantKeys.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Bereits kategorisierte Gegenparteien</h2>
+          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-card">
+            {categorizedMerchantKeys.map((merchantKey) => (
+              <li key={merchantKey} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <p className="font-medium text-foreground">{merchantKey}</p>
+                <MerchantCategoryForm
+                  merchantKey={merchantKey}
+                  categories={categoryRows}
+                  existingRules={rulesByMerchantKey.get(merchantKey)!}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

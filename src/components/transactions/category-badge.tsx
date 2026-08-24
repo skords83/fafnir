@@ -51,12 +51,20 @@ export function CategoryBadge({
             />
           </div>
           <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Alle Buchungen dieser Gegenpartei</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              {merchantRulePurposeContains !== null
+                ? `Buchungen mit „${merchantRulePurposeContains}" dieser Gegenpartei`
+                : 'Alle Buchungen dieser Gegenpartei'}
+            </p>
             <CategoryPicker
               categories={categories}
               selectedCategoryId={merchantRuleCategoryId}
               showClear={merchantRuleCategoryId !== null}
-              clearLabel="Kategorie entfernen"
+              clearLabel={
+                merchantRulePurposeContains !== null
+                  ? `Regel für „${merchantRulePurposeContains}" entfernen`
+                  : 'Kategorie entfernen'
+              }
               onSubmit={(target) => setMerchantRule(merchantKey, merchantRulePurposeContains, target)}
             />
           </div>

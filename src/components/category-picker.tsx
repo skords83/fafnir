@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import type { CategoryTarget } from '@/app/(app)/actions/category-mutations';
+import type { ActionResult } from '@/app/(app)/actions/categories';
 
 const NEW_CATEGORY_VALUE = '__new__';
 
@@ -12,7 +13,7 @@ export interface CategoryPickerProps {
   /** Whether the clear button is rendered at all — callers decide per their own semantics. */
   showClear: boolean;
   clearLabel: string;
-  onSubmit: (target: CategoryTarget) => Promise<void>;
+  onSubmit: (target: CategoryTarget) => Promise<ActionResult>;
 }
 
 export function CategoryPicker({ categories, selectedCategoryId, showClear, clearLabel, onSubmit }: CategoryPickerProps) {
@@ -28,7 +29,10 @@ export function CategoryPicker({ categories, selectedCategoryId, showClear, clea
     setError(null);
     startTransition(async () => {
       try {
-        await onSubmit(target);
+        const result = await onSubmit(target);
+        if (!result.ok) {
+          setError(result.error);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Fehler beim Speichern.');
       }

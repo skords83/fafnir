@@ -94,6 +94,25 @@ describe('resolveTransactionCategory — purpose-scoped rules', () => {
     });
   });
 
+  test('when two disjoint purpose-scoped rules both match, the longer purposeContains wins', () => {
+    const disjointRules = [
+      { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Schulgeld', categoryId: 1 },
+      { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Hort', categoryId: 2 },
+    ];
+    const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categories, disjointRules);
+    const tx = {
+      categoryOverrideId: null,
+      counterparty: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.',
+      purpose: 'Schulgeld und Hort Oktober',
+    };
+
+    expect(resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById)).toEqual({
+      categoryId: 1,
+      categoryName: 'Lebensmittel',
+      source: 'rule',
+    });
+  });
+
   test('resolves to none when only purpose-specific rules exist and none match, with no fallback rule', () => {
     const purposeOnlyRules = [
       { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Gehalt', categoryId: 1 },
