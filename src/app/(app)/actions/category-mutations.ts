@@ -145,5 +145,12 @@ export async function deleteCategory(categoryId: number): Promise<void> {
     }
     throw new Error(`Kategorie wird noch von ${parts.join(' und ')} verwendet.`);
   }
-  await db.delete(categories).where(eq(categories.id, categoryId));
+  try {
+    await db.delete(categories).where(eq(categories.id, categoryId));
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      throw new Error('Kategorie wird noch verwendet und kann nicht gelöscht werden.');
+    }
+    throw err;
+  }
 }
