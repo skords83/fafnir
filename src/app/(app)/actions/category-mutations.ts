@@ -116,13 +116,21 @@ export async function renameCategory(categoryId: number, name: string): Promise<
   if (trimmed === '') {
     throw new Error('Der Kategoriename darf nicht leer sein.');
   }
+  let updated: { id: number }[];
   try {
-    await db.update(categories).set({ name: trimmed }).where(eq(categories.id, categoryId));
+    updated = await db
+      .update(categories)
+      .set({ name: trimmed })
+      .where(eq(categories.id, categoryId))
+      .returning({ id: categories.id });
   } catch (err) {
     if (err && typeof err === 'object' && 'code' in err && err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       throw new Error(`Es gibt bereits eine Kategorie namens „${trimmed}".`);
     }
     throw err;
+  }
+  if (updated.length === 0) {
+    throw new Error('Diese Kategorie existiert nicht mehr.');
   }
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type FormEvent } from 'react';
 import { deleteCategory, renameCategory } from '@/app/(app)/actions/categories';
 
 export interface CategoryUsage {
@@ -25,7 +25,8 @@ export function CategoryRow({
   const canRename = trimmed !== '' && trimmed !== persistedName;
   const isInUse = usage.transactionCount > 0 || usage.ruleCount > 0;
 
-  function handleRename() {
+  function handleRename(event: FormEvent) {
+    event.preventDefault();
     setRenameError(null);
     startTransition(async () => {
       const result = await renameCategory(category.id, trimmed);
@@ -56,25 +57,27 @@ export function CategoryRow({
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <form className="flex flex-wrap items-center gap-2" onSubmit={handleRename}>
         <input
           type="text"
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setRenameError(null);
+          }}
           disabled={isPending}
           aria-label={`Name von Kategorie „${persistedName}"`}
           className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
         />
         <button
-          type="button"
-          onClick={handleRename}
+          type="submit"
           disabled={isPending || !canRename}
           className="rounded-md bg-primary px-2 py-1 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
           Speichern
         </button>
         {renameError && <p className="text-xs text-destructive">{renameError}</p>}
-      </div>
+      </form>
 
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-xs text-muted-foreground">

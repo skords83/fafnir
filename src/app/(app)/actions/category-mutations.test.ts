@@ -282,6 +282,15 @@ describe('renameCategory', () => {
 
     await expect(renameCategory(category.id, 'Lebensmittel')).resolves.toBeUndefined();
   });
+
+  test('renaming a category that was deleted in the meantime throws a friendly error', async () => {
+    const { db, schema, deleteCategory, renameCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+
+    await deleteCategory(category.id);
+
+    await expect(renameCategory(category.id, 'Essen & Trinken')).rejects.toThrow(/existiert nicht mehr/);
+  });
 });
 
 describe('deleteCategory', () => {
