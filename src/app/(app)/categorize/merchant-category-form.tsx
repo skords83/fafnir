@@ -16,7 +16,7 @@ export function MerchantCategoryForm({
       selectedCategoryId={null}
       showClear={false}
       clearLabel="Kategorie entfernen"
-      onSubmit={(target) => setMerchantRule(merchantKey, target)}
+      onSubmit={(target) => setMerchantRule(merchantKey, null, target)}
     />
   );
 }
