@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { categories, merchantCategoryRules, transactions } from '@/db/schema';
 
@@ -87,4 +87,63 @@ export async function applyMerchantRule(
 export async function applyTransactionOverride(transactionId: number, target: CategoryTarget): Promise<void> {
   const categoryId = target.type === 'clear' ? null : await resolveCategoryId(target);
   await db.update(transactions).set({ categoryOverrideId: categoryId }).where(eq(transactions.id, transactionId));
+}
+
+/**
+ * Counts how many transactions have this category as their manual override,
+ * and how many merchant rules assign this category — the two ways a category
+ * can be "in use". Always queried fresh (never trust a client-supplied count),
+ * since this backs the delete-blocking check as well as the usage display on
+ * the categories page.
+ */
+export async function countCategoryUsage(
+  categoryId: number
+): Promise<{ transactionCount: number; ruleCount: number }> {
+  const [{ value: transactionCount }] = await db
+    .select({ value: count() })
+    .from(transactions)
+    .where(eq(transactions.categoryOverrideId, categoryId));
+  const [{ value: ruleCount }] = await db
+    .select({ value: count() })
+    .from(merchantCategoryRules)
+    .where(eq(merchantCategoryRules.categoryId, categoryId));
+  return { transactionCount, ruleCount };
+}
+
+/** Renames a category. Throws a German-language error on an empty name or a name collision. */
+export async function renameCategory(categoryId: number, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (trimmed === '') {
+    throw new Error('Der Kategoriename darf nicht leer sein.');
+  }
+  try {
+    await db.update(categories).set({ name: trimmed }).where(eq(categories.id, categoryId));
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      throw new Error(`Es gibt bereits eine Kategorie namens „${trimmed}".`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Deletes a category. Re-checks usage immediately before deleting (see
+ * `countCategoryUsage`) and throws a German-language error naming the current
+ * counts instead of deleting — `categories` is referenced by a NOT NULL FK from
+ * `merchantCategoryRules.categoryId`, so an in-use category can never be
+ * deleted out from under a rule.
+ */
+export async function deleteCategory(categoryId: number): Promise<void> {
+  const { transactionCount, ruleCount } = await countCategoryUsage(categoryId);
+  if (transactionCount > 0 || ruleCount > 0) {
+    const parts: string[] = [];
+    if (transactionCount > 0) {
+      parts.push(`${transactionCount} Buchung${transactionCount === 1 ? '' : 'en'}`);
+    }
+    if (ruleCount > 0) {
+      parts.push(`${ruleCount} Regel${ruleCount === 1 ? '' : 'n'}`);
+    }
+    throw new Error(`Kategorie wird noch von ${parts.join(' und ')} verwendet.`);
+  }
+  await db.delete(categories).where(eq(categories.id, categoryId));
 }

@@ -220,3 +220,109 @@ describe('applyTransactionOverride', () => {
     expect(updated.categoryOverrideId).toBe(category.id);
   });
 });
+
+describe('countCategoryUsage', () => {
+  test('counts transaction overrides and merchant rules independently', async () => {
+    const { db, schema, countCategoryUsage } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await seedTransaction(db, schema, { categoryOverrideId: category.id, externalHash: 'hash-a' });
+    await seedTransaction(db, schema, { categoryOverrideId: category.id, externalHash: 'hash-b' });
+    await db.insert(schema.merchantCategoryRules).values({ merchantKey: 'REWE Markt GmbH', categoryId: category.id });
+
+    const usage = await countCategoryUsage(category.id);
+
+    expect(usage).toEqual({ transactionCount: 2, ruleCount: 1 });
+  });
+
+  test('returns zero counts for an unused category', async () => {
+    const { db, schema, countCategoryUsage } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Sonstiges' }).returning();
+
+    const usage = await countCategoryUsage(category.id);
+
+    expect(usage).toEqual({ transactionCount: 0, ruleCount: 0 });
+  });
+});
+
+describe('renameCategory', () => {
+  test('renaming a category updates its name', async () => {
+    const { db, schema, renameCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+
+    await renameCategory(category.id, 'Essen & Trinken');
+
+    const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, category.id));
+    expect(updated.name).toBe('Essen & Trinken');
+  });
+
+  test('renaming to an empty or whitespace-only name throws', async () => {
+    const { db, schema, renameCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+
+    await expect(renameCategory(category.id, '   ')).rejects.toThrow(/darf nicht leer sein/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, category.id));
+    expect(unchanged.name).toBe('Lebensmittel');
+  });
+
+  test('renaming to a name already used by another category throws a friendly error', async () => {
+    const { db, schema, renameCategory } = await freshDb();
+    const [a] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await db.insert(schema.categories).values({ name: 'Gehalt' });
+
+    await expect(renameCategory(a.id, 'Gehalt')).rejects.toThrow(/gibt bereits eine Kategorie/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, a.id));
+    expect(unchanged.name).toBe('Lebensmittel');
+  });
+
+  test('renaming a category to its own current name is a no-op that does not throw', async () => {
+    const { db, schema, renameCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+
+    await expect(renameCategory(category.id, 'Lebensmittel')).resolves.toBeUndefined();
+  });
+});
+
+describe('deleteCategory', () => {
+  test('deleting an unused category removes it', async () => {
+    const { db, schema, deleteCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Sonstiges' }).returning();
+
+    await deleteCategory(category.id);
+
+    const remaining = await db.select().from(schema.categories);
+    expect(remaining).toHaveLength(0);
+  });
+
+  test('deleting a category referenced by a transaction override throws and leaves it intact', async () => {
+    const { db, schema, deleteCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await seedTransaction(db, schema, { categoryOverrideId: category.id });
+
+    await expect(deleteCategory(category.id)).rejects.toThrow(/1 Buchung/);
+
+    const remaining = await db.select().from(schema.categories);
+    expect(remaining).toHaveLength(1);
+  });
+
+  test('deleting a category referenced by a merchant rule throws and leaves it intact', async () => {
+    const { db, schema, deleteCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await db.insert(schema.merchantCategoryRules).values({ merchantKey: 'REWE Markt GmbH', categoryId: category.id });
+
+    await expect(deleteCategory(category.id)).rejects.toThrow(/1 Regel/);
+
+    const remaining = await db.select().from(schema.categories);
+    expect(remaining).toHaveLength(1);
+  });
+
+  test('the error message reports both counts when both are in use', async () => {
+    const { db, schema, deleteCategory } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await seedTransaction(db, schema, { categoryOverrideId: category.id });
+    await db.insert(schema.merchantCategoryRules).values({ merchantKey: 'REWE Markt GmbH', categoryId: category.id });
+
+    await expect(deleteCategory(category.id)).rejects.toThrow(/1 Buchung.*1 Regel|1 Regel.*1 Buchung/);
+  });
+});
