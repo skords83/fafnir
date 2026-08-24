@@ -1,0 +1,96 @@
+'use client';
+
+import { useState, useTransition } from 'react';
+import { deleteCategory, renameCategory } from '@/app/(app)/actions/categories';
+
+export interface CategoryUsage {
+  transactionCount: number;
+  ruleCount: number;
+}
+
+export function CategoryRow({
+  category,
+  usage,
+}: {
+  category: { id: number; name: string };
+  usage: CategoryUsage;
+}) {
+  const [name, setName] = useState(category.name);
+  const [persistedName, setPersistedName] = useState(category.name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const trimmed = name.trim();
+  const canRename = trimmed !== '' && trimmed !== persistedName;
+  const isInUse = usage.transactionCount > 0 || usage.ruleCount > 0;
+
+  function handleRename() {
+    setRenameError(null);
+    startTransition(async () => {
+      const result = await renameCategory(category.id, trimmed);
+      if (result.ok) {
+        setPersistedName(trimmed);
+      } else {
+        setRenameError(result.error);
+      }
+    });
+  }
+
+  function handleDelete() {
+    setDeleteError(null);
+    startTransition(async () => {
+      const result = await deleteCategory(category.id);
+      if (!result.ok) {
+        setDeleteError(result.error);
+      }
+    });
+  }
+
+  const usageParts = [
+    usage.transactionCount > 0
+      ? `${usage.transactionCount} Buchung${usage.transactionCount === 1 ? '' : 'en'}`
+      : null,
+    usage.ruleCount > 0 ? `${usage.ruleCount} Regel${usage.ruleCount === 1 ? '' : 'n'}` : null,
+  ].filter((part): part is string => part !== null);
+
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          disabled={isPending}
+          aria-label={`Name von Kategorie „${persistedName}"`}
+          className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+        />
+        <button
+          type="button"
+          onClick={handleRename}
+          disabled={isPending || !canRename}
+          className="rounded-md bg-primary px-2 py-1 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          Speichern
+        </button>
+        {renameError && <p className="text-xs text-destructive">{renameError}</p>}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-xs text-muted-foreground">
+          {usageParts.length > 0 ? usageParts.join(' · ') : 'Nicht verwendet'}
+        </p>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isPending || isInUse}
+          title={isInUse ? 'Kategorie ist noch in Gebrauch und kann nicht gelöscht werden.' : undefined}
+          className="text-xs text-destructive hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+        >
+          Löschen
+        </button>
+        {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+      </div>
+    </li>
+  );
+}
