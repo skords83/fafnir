@@ -29,6 +29,10 @@ export default async function CategorizePage() {
   for (const tx of allTransactions) {
     if (resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById).source === 'none') {
       const key = getMerchantKey(tx);
+      // A merchant with any rule at all (even one that doesn't match every one of its
+      // transactions) belongs in the "already categorized" section below, not here — a
+      // merchant must appear in exactly one section, never both.
+      if (rulesByMerchantKey.has(key)) continue;
       uncategorizedCountByMerchant.set(key, (uncategorizedCountByMerchant.get(key) ?? 0) + 1);
     }
   }

@@ -49,7 +49,9 @@ export function resolveTransactionCategory(
  * - among purpose-scoped rules, `buildCategoryLookups` orders them longest-`purposeContains`-first,
  *   so the most specific matching rule is returned; two independently-typed rules with disjoint
  *   substrings (neither contains the other) can still both textually match one transaction's
- *   purpose, in which case the longer one governs by convention, not because overlap was ruled out,
+ *   purpose, in which case the longer one governs by convention, not because overlap was ruled out
+ *   (two rules of equal length are ordered by insertion/DB row order — deterministic, but an
+ *   arbitrary tiebreak rather than a meaningful "more specific" choice),
  * - the fallback rule (null purposeContains) is tried if no purpose-scoped rule matches,
  * - returns null if no rule applies.
  */
@@ -107,7 +109,10 @@ export function buildCategoryLookups(
   // specific and are tried first; the fallback rule (null) always comes last. This
   // matters when two purpose-scoped rules are disjoint (neither substring contains the
   // other) but could both match one transaction's purpose text — without a stable order,
-  // which one "wins" would depend on unspecified DB row order.
+  // which one "wins" would depend on unspecified DB row order. Array.prototype.sort is
+  // stable, so two rules with equal-length purposeContains keep their relative (DB row)
+  // order — deterministic, but an arbitrary tiebreak from a user's perspective, not a
+  // meaningful "more specific" choice.
   for (const rules of rulesByMerchantKey.values()) {
     rules.sort((a, b) => {
       if (a.purposeContains === null) return 1;

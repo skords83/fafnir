@@ -95,9 +95,12 @@ describe('resolveTransactionCategory — purpose-scoped rules', () => {
   });
 
   test('when two disjoint purpose-scoped rules both match, the longer purposeContains wins', () => {
+    // Deliberately insert the *shorter* rule first: a naive insertion-order scan would
+    // return the 'Hort' rule (categoryId 2) here, so this only passes if buildCategoryLookups
+    // actually reorders by purposeContains length rather than preserving row order.
     const disjointRules = [
-      { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Schulgeld', categoryId: 1 },
       { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Hort', categoryId: 2 },
+      { merchantKey: 'Rudolf Steiner Schulverein Hamburg- Wandsbek e.V.', purposeContains: 'Schulgeld', categoryId: 1 },
     ];
     const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categories, disjointRules);
     const tx = {
