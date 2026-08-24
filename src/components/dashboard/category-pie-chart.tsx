@@ -1,16 +1,23 @@
 'use client';
 
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatCents } from '@/lib/format';
 import type { CategoryBreakdownPoint } from '@/lib/dashboard-stats';
 
-const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#6366f1', '#f43f5e'];
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#64748b'];
 
 export function CategoryPieChart({ data }: { data: CategoryBreakdownPoint[] }) {
-  const chartData = data.map((d) => ({
-    categoryName: d.categoryName,
-    value: d.amountCents / 100,
-    amountCents: d.amountCents,
+  if (data.length === 0) {
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+        Keine Ausgaben in diesem Monat.
+      </div>
+    );
+  }
+
+  const chartData = data.map((item) => ({
+    name: item.categoryName,
+    value: item.amountCents / 100,
   }));
 
   return (
@@ -21,22 +28,24 @@ export function CategoryPieChart({ data }: { data: CategoryBreakdownPoint[] }) {
             data={chartData}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={(entry: any) => `${entry.categoryName} (${entry.value.toFixed(0)}€)`}
+            innerRadius={50}
             outerRadius={80}
-            fill="#8884d8"
+            paddingAngle={2}
             dataKey="value"
           >
-            {chartData.map((entry, index) => (
+            {chartData.map((_, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => {
-            if (typeof value === 'number') {
-              return formatCents(Math.round(value * 100), 'EUR');
-            }
-            return value;
-          }} />
+          <Tooltip
+            formatter={(value) => {
+              if (typeof value === 'number') {
+                return formatCents(Math.round(value * 100), 'EUR');
+              }
+              return value;
+            }}
+            contentStyle={{ backgroundColor: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', borderRadius: '0.5rem' }}
+          />
           <Legend wrapperStyle={{ paddingTop: '10px' }} />
         </PieChart>
       </ResponsiveContainer>
