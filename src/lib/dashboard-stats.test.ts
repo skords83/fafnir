@@ -38,11 +38,23 @@ describe('calculateMonthlyTrends', () => {
       incomeCents: 10000,
       expenseCents: 3000,
     });
+    expect(trends[2]).toEqual({
+      month: 'Mär',
+      monthKey: '2026-03',
+      incomeCents: 0,
+      expenseCents: 0,
+    });
     expect(trends[7]).toEqual({
       month: 'Aug',
       monthKey: '2026-08',
       incomeCents: 0,
       expenseCents: 5000,
+    });
+    expect(trends[11]).toEqual({
+      month: 'Dez',
+      monthKey: '2026-12',
+      incomeCents: 0,
+      expenseCents: 0,
     });
   });
 });
@@ -69,6 +81,29 @@ describe('calculateCategoryBreakdown', () => {
       categoryName: 'Lebensmittel',
       amountCents: 5000,
       percentage: 50,
+    });
+  });
+
+  test('handles null categoryId and categoryName with Unkategorisiert fallback', () => {
+    const items = [
+      { amountCents: -3000, categoryName: null, categoryId: null },
+      { amountCents: -2000, categoryName: 'Essen', categoryId: 1 },
+      { amountCents: -1000, categoryName: null, categoryId: null },
+    ];
+
+    const breakdown = calculateCategoryBreakdown(items);
+    expect(breakdown).toHaveLength(2);
+    expect(breakdown[0]).toEqual({
+      categoryId: null,
+      categoryName: 'Unkategorisiert',
+      amountCents: 4000,
+      percentage: 67,
+    });
+    expect(breakdown[1]).toEqual({
+      categoryId: 1,
+      categoryName: 'Essen',
+      amountCents: 2000,
+      percentage: 33,
     });
   });
 });

@@ -11,11 +11,26 @@ export interface MonthlyTrendPoint {
 }
 
 export interface CategoryBreakdownPoint {
-  categoryId: number;
+  categoryId: number | null;
   categoryName: string;
   amountCents: number;
   percentage: number;
 }
+
+const GERMAN_MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mär',
+  'Apr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Dez',
+];
 
 export function calculateMonthSummary(
   transactions: Array<{ amountCents: number; bookingDate: string }>,
@@ -41,20 +56,6 @@ export function calculateMonthlyTrends(
   transactions: Array<{ amountCents: number; bookingDate: string }>,
   year: number
 ): MonthlyTrendPoint[] {
-  const monthNames = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
   const result: MonthlyTrendPoint[] = [];
 
   for (let m = 1; m <= 12; m++) {
@@ -73,7 +74,7 @@ export function calculateMonthlyTrends(
     }
 
     result.push({
-      month: monthNames[m - 1],
+      month: GERMAN_MONTH_NAMES[m - 1],
       monthKey,
       incomeCents,
       expenseCents,
@@ -84,24 +85,32 @@ export function calculateMonthlyTrends(
 }
 
 export function calculateCategoryBreakdown(
-  items: Array<{ amountCents: number; categoryName: string; categoryId: number }>
+  items: Array<{
+    amountCents: number;
+    categoryName: string | null;
+    categoryId: number | null;
+  }>
 ): CategoryBreakdownPoint[] {
   const categoryMap = new Map<
-    number,
-    { name: string; amount: number }
+    string,
+    { categoryId: number | null; name: string; amount: number }
   >();
 
   // Aggregate expenses by category (skip income/positive amounts)
   for (const item of items) {
     if (item.amountCents < 0) {
       const absolute = Math.abs(item.amountCents);
-      if (!categoryMap.has(item.categoryId)) {
-        categoryMap.set(item.categoryId, {
-          name: item.categoryName,
+      const name = item.categoryName ?? 'Unkategorisiert';
+      const mapKey = `${item.categoryId ?? 'null'}:${name}`;
+
+      if (!categoryMap.has(mapKey)) {
+        categoryMap.set(mapKey, {
+          categoryId: item.categoryId,
+          name,
           amount: 0,
         });
       }
-      const entry = categoryMap.get(item.categoryId)!;
+      const entry = categoryMap.get(mapKey)!;
       entry.amount += absolute;
     }
   }
@@ -114,7 +123,7 @@ export function calculateCategoryBreakdown(
 
   // Convert to result array, sorted by amount descending
   const result: CategoryBreakdownPoint[] = Array.from(categoryMap).map(
-    ([categoryId, { name, amount }]) => ({
+    ([, { categoryId, name, amount }]) => ({
       categoryId,
       categoryName: name,
       amountCents: amount,
@@ -127,7 +136,10 @@ export function calculateCategoryBreakdown(
     if (b.amountCents !== a.amountCents) {
       return b.amountCents - a.amountCents;
     }
-    return b.categoryId - a.categoryId;
+    // When amounts are equal, sort by categoryId descending (nulls last)
+    const aId = a.categoryId ?? -1;
+    const bId = b.categoryId ?? -1;
+    return bId - aId;
   });
   return result;
 }
