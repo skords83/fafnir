@@ -1,14 +1,21 @@
 import Link from 'next/link';
-import { and, asc, eq, gte } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, balanceSnapshots, categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { AccountCard } from '@/components/dashboard/account-card';
 import { requireSession } from '@/lib/session';
-import { computeMonthToDateTrend } from '@/lib/trend';
-import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { formatCents } from '@/lib/format';
+import { buildCategoryLookups, findGoverningMerchantRule, resolveTransactionCategory } from '@/lib/category-resolution';
 import { getMerchantKey } from '@/lib/merchant-key';
+import {
+  calculateMonthSummary,
+  calculateMonthlyTrends,
+  calculateCategoryBreakdown,
+} from '@/lib/dashboard-stats';
+import { IncomeExpenseBarChart } from '@/components/dashboard/income-expense-chart';
+import { CategoryPieChart } from '@/components/dashboard/category-pie-chart';
+import { TransactionList } from '@/components/transactions/transaction-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,74 +35,148 @@ export default async function DashboardPage() {
     );
   }
 
+  const account = allAccounts[0]; // Primary account focus
+
   const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const currentYear = now.getFullYear();
+  const currentMonthKey = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const cards = await Promise.all(
-    allAccounts.map(async (account) => {
-      const history = await db
-        .select({ date: balanceSnapshots.snapshotDate, balanceCents: balanceSnapshots.balanceCents })
-        .from(balanceSnapshots)
-        .where(eq(balanceSnapshots.accountId, account.id))
-        .orderBy(asc(balanceSnapshots.snapshotDate));
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-      const currentBalanceCents = history.length > 0 ? history[history.length - 1].balanceCents : 0;
-
-      const monthToDateTransactions = await db
-        .select({ bookingDate: transactions.bookingDate, amountCents: transactions.amountCents })
-        .from(transactions)
-        .where(and(eq(transactions.accountId, account.id), gte(transactions.bookingDate, monthStart)));
-
-      const trend = computeMonthToDateTrend(currentBalanceCents, monthToDateTransactions, now);
-
-      return { account, history, currentBalanceCents, trend };
-    })
-  );
-
-  const [allTransactionsForCategorization, categoryRows, ruleRows] = await Promise.all([
-    db
-      .select({
-        categoryOverrideId: transactions.categoryOverrideId,
-        counterparty: transactions.counterparty,
-        purpose: transactions.purpose,
-      })
-      .from(transactions),
+  const [allTransactions, categoryRows, ruleRows, latestSnapshots, recentRawTxs] = await Promise.all([
+    db.select().from(transactions).where(eq(transactions.accountId, account.id)),
     db.select().from(categories),
     db.select().from(merchantCategoryRules),
+    db
+      .select({ balanceCents: balanceSnapshots.balanceCents })
+      .from(balanceSnapshots)
+      .where(eq(balanceSnapshots.accountId, account.id))
+      .orderBy(desc(balanceSnapshots.snapshotDate))
+      .limit(1),
+    db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.accountId, account.id))
+      .orderBy(desc(transactions.bookingDate), desc(transactions.id))
+      .limit(5),
   ]);
 
+  const currentBalanceCents = latestSnapshots.length > 0 ? latestSnapshots[0].balanceCents : 0;
   const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
 
+  // Uncategorized check
   const uncategorizedMerchants = new Set<string>();
-  for (const tx of allTransactionsForCategorization) {
-    if (resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById).source === 'none') {
-      uncategorizedMerchants.add(getMerchantKey(tx));
+  const resolvedTxsWithCategory = allTransactions.map((tx) => {
+    const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
+    const merchantKey = getMerchantKey(tx);
+    if (resolved.source === 'none') {
+      uncategorizedMerchants.add(merchantKey);
     }
-  }
+    return {
+      amountCents: tx.amountCents,
+      bookingDate: tx.bookingDate,
+      categoryId: resolved.categoryId,
+      categoryName: resolved.categoryName,
+    };
+  });
+
+  // Calculate stats
+  const currentMonthSummary = calculateMonthSummary(allTransactions, currentMonthKey);
+  const lastMonthSummary = calculateMonthSummary(allTransactions, lastMonthKey);
+  const monthlyTrends = calculateMonthlyTrends(allTransactions, currentYear);
+
+  const currentMonthTxs = resolvedTxsWithCategory.filter((tx) =>
+    tx.bookingDate.startsWith(currentMonthKey)
+  );
+  const categoryBreakdown = calculateCategoryBreakdown(currentMonthTxs);
+
+  // Prepare recent transactions
+  const recentTransactions = recentRawTxs.map((tx) => {
+    const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
+    const merchantKey = getMerchantKey(tx);
+    const governingRule = findGoverningMerchantRule(tx, rulesByMerchantKey);
+    return {
+      ...tx,
+      merchantKey,
+      effectiveCategory: resolved.categoryId !== null ? { id: resolved.categoryId, name: resolved.categoryName! } : null,
+      overrideCategoryId: tx.categoryOverrideId,
+      merchantRuleCategoryId: governingRule?.categoryId ?? null,
+      merchantRulePurposeContains: governingRule?.purposeContains ?? null,
+    };
+  });
 
   return (
-    <div className="space-y-4">
-      {uncategorizedMerchants.size > 0 && (
-        <Link
-          href="/categorize"
-          className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          {uncategorizedMerchants.size} Gegenpartei{uncategorizedMerchants.size === 1 ? '' : 'en'} unkategorisiert
-        </Link>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {cards.map(({ account, history, currentBalanceCents, trend }) => (
-          <Link key={account.id} href={`/accounts/${account.id}`} className="block">
-            <AccountCard
-              accountName={account.name}
-              currency={account.currency}
-              currentBalanceCents={currentBalanceCents}
-              history={history}
-              trend={trend}
-            />
+    <div className="space-y-6">
+      {/* Top Bar with Uncategorized Badge */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-foreground">Übersicht</h1>
+        {uncategorizedMerchants.size > 0 && (
+          <Link
+            href="/categorize"
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+          >
+            {uncategorizedMerchants.size} Gegenpartei{uncategorizedMerchants.size === 1 ? '' : 'en'} unkategorisiert
           </Link>
-        ))}
+        )}
+      </div>
+
+      {/* KPI Cards Row */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Dieser Monat</p>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-sm font-semibold text-positive">
+              + {formatCents(currentMonthSummary.incomeCents, account.currency)}
+            </span>
+            <span className="text-sm font-semibold text-destructive">
+              - {formatCents(currentMonthSummary.expenseCents, account.currency)}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Vormonat</p>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-sm font-semibold text-positive">
+              + {formatCents(lastMonthSummary.incomeCents, account.currency)}
+            </span>
+            <span className="text-sm font-semibold text-destructive">
+              - {formatCents(lastMonthSummary.expenseCents, account.currency)}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Aktueller Kontostand</p>
+          <p className="mt-2 text-xl font-semibold text-foreground">
+            {formatCents(currentBalanceCents, account.currency)}
+          </p>
+        </div>
+      </div>
+
+      {/* Charts Grid */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h2 className="mb-4 text-sm font-medium text-foreground">Einnahmen vs. Ausgaben ({currentYear})</h2>
+          <IncomeExpenseBarChart data={monthlyTrends} />
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h2 className="mb-4 text-sm font-medium text-foreground">Kategorien im aktuellen Monat</h2>
+          <CategoryPieChart data={categoryBreakdown} />
+        </div>
+      </div>
+
+      {/* Recent Transactions List */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-foreground">Letzte Buchungen</h2>
+          <Link href={`/accounts/${account.id}`} className="text-xs text-muted-foreground hover:text-foreground">
+            Alle anzeigen →
+          </Link>
+        </div>
+        <TransactionList rows={recentTransactions} currency={account.currency} categories={categoryRows} />
       </div>
     </div>
   );
