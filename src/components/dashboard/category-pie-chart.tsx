@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCents } from '@/lib/format';
 import type { CategoryBreakdownPoint } from '@/lib/dashboard-stats';
+import { THEME_CHANGE_EVENT, getEffectiveTheme } from '@/lib/theme';
 import {
   CATEGORY_COLORS_LIGHT,
   CATEGORY_COLORS_DARK,
@@ -12,26 +13,32 @@ import {
   buildSlices,
 } from '@/lib/category-chart-colors';
 
-function subscribeToColorScheme(callback: () => void) {
+function subscribeToTheme(callback: () => void) {
   const query = window.matchMedia('(prefers-color-scheme: dark)');
   query.addEventListener('change', callback);
-  return () => query.removeEventListener('change', callback);
+  document.addEventListener(THEME_CHANGE_EVENT, callback);
+  return () => {
+    query.removeEventListener('change', callback);
+    document.removeEventListener(THEME_CHANGE_EVENT, callback);
+  };
 }
 
-function getPrefersDarkSnapshot() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+function getIsDarkSnapshot() {
+  return getEffectiveTheme() === 'dark';
 }
 
-function getPrefersDarkServerSnapshot() {
+function getIsDarkServerSnapshot() {
   return false;
 }
 
 // useSyncExternalStore (rather than an effect that calls setState) is the
 // React-recommended way to read a browser API: it avoids the extra render
 // pass an effect-driven setState would trigger, and stays consistent
-// between SSR and the client.
+// between SSR and the client. Subscribing to both the system media query
+// and the manual theme toggle's change event keeps the chart's colors in
+// sync with whichever one currently governs the page (see ThemeToggle).
 function usePrefersDarkMode() {
-  return useSyncExternalStore(subscribeToColorScheme, getPrefersDarkSnapshot, getPrefersDarkServerSnapshot);
+  return useSyncExternalStore(subscribeToTheme, getIsDarkSnapshot, getIsDarkServerSnapshot);
 }
 
 export function CategoryPieChart({ data, currency }: { data: CategoryBreakdownPoint[]; currency: string }) {
