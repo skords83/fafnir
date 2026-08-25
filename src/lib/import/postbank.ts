@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 export function parseGermanDateToIso(value: string): string {
   const match = value.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!match) {
-    throw new Error(`Not a valid German date (d.m.yyyy): "${value}"`);
+    throw new Error(`Kein gültiges Datumsformat (t.m.jjjj): "${value}"`);
   }
   const [, day, month, year] = match;
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
@@ -47,7 +47,7 @@ export function parseCsv(csvText: string): ParsedCsv {
 
   const headerIndex = lines.findIndex((line) => line.startsWith('Buchungstag;'));
   if (headerIndex === -1) {
-    throw new Error('Could not find the "Buchungstag" header row in the CSV.');
+    throw new Error('Die Kopfzeile "Buchungstag" wurde in der CSV-Datei nicht gefunden.');
   }
   const columns = splitCsvLine(lines[headerIndex]);
 
