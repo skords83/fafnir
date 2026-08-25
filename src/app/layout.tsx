@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Geist_Mono } from "next/font/google";
+import { ThemeScript } from "@/components/theme-script";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -22,9 +23,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="light"
+      suppressHydrationWarning
       className={`${ibmPlexSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ThemeScript />
+        {children}
+      </body>
     </html>
   );
 }
