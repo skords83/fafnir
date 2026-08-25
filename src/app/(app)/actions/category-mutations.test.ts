@@ -337,26 +337,53 @@ describe('deleteCategory', () => {
 });
 
 describe('getMerchantTransactionsForKey', () => {
-  test('returns transactions sorted by bookingDate descending', async () => {
+  test("returns only this merchant's transactions, newest first, with resolved category", async () => {
     const { db, schema, getMerchantTransactionsForKey } = await freshDb();
-    await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.', bookingDate: '2026-08-10', externalHash: 'hash-1' });
-    await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.', bookingDate: '2026-08-20', externalHash: 'hash-2' });
-    await seedTransaction(db, schema, { counterparty: 'Aldi Sued Dienstleistungs-SE', bookingDate: '2026-08-15', externalHash: 'hash-3' });
 
-    const result = await getMerchantTransactionsForKey('Amazon EU S.a.r.L.');
+    const [category] = await db.insert(schema.categories).values({ name: 'Lebensmittel' }).returning();
+    await seedTransaction(db, schema, {
+      bookingDate: '2026-08-10',
+      externalHash: 'hash-1',
+      categoryOverrideId: category.id,
+    });
+    await seedTransaction(db, schema, {
+      bookingDate: '2026-08-20',
+      externalHash: 'hash-2',
+    });
+    await seedTransaction(db, schema, {
+      counterparty: 'Aldi Süd',
+      bookingDate: '2026-08-15',
+      externalHash: 'hash-3',
+    });
 
-    expect(result).toHaveLength(2);
-    expect(result[0].bookingDate).toBe('2026-08-20');
-    expect(result[1].bookingDate).toBe('2026-08-10');
+    const rows = await getMerchantTransactionsForKey('Rewe Markt GmbH');
+
+    expect(rows.map((r) => r.bookingDate)).toEqual(['2026-08-20', '2026-08-10']);
+    expect(rows[1].effectiveCategory).toEqual({ id: category.id, name: 'Lebensmittel' });
+    expect(rows[1].overrideCategoryId).toBe(category.id);
+    expect(rows[0].effectiveCategory).toBeNull();
+    expect(rows[0].overrideCategoryId).toBeNull();
   });
 
-  test('includes effectiveCategory null when there is no rule for the merchant', async () => {
+  test('includes the account currency for each transaction', async () => {
     const { db, schema, getMerchantTransactionsForKey } = await freshDb();
-    const tx = await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.' });
+    const [usdAccount] = await db
+      .insert(schema.accounts)
+      .values({ name: 'US-Konto', currency: 'USD', createdAt: new Date() })
+      .returning();
+    await db.insert(schema.transactions).values({
+      accountId: usdAccount.id,
+      bookingDate: '2026-08-12',
+      amountCents: -500,
+      counterparty: 'REWE Markt GmbH',
+      purpose: null,
+      externalHash: 'hash-usd',
+    });
 
-    const [result] = await getMerchantTransactionsForKey('Amazon EU S.a.r.L.');
+    const rows = await getMerchantTransactionsForKey('Rewe Markt GmbH');
 
-    expect(result.effectiveCategory).toBeNull();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].currency).toBe('USD');
   });
 
   test("sets exactPurposeRuleCategoryId only when a rule's purposeContains exactly equals the full purpose", async () => {
@@ -384,5 +411,15 @@ describe('getMerchantTransactionsForKey', () => {
 
     expect(exact?.exactPurposeRuleCategoryId).toBe(category.id);
     expect(partial?.exactPurposeRuleCategoryId).toBeNull();
+    // The purpose-scoped rule still governs the longer, non-exact-matching purpose too.
+    expect(partial?.effectiveCategory).toEqual({ id: category.id, name: 'Onlineshopping' });
+  });
+
+  test('returns an empty array for a merchant key with no transactions', async () => {
+    const { getMerchantTransactionsForKey } = await freshDb();
+
+    const rows = await getMerchantTransactionsForKey('Nobody GmbH');
+
+    expect(rows).toEqual([]);
   });
 });

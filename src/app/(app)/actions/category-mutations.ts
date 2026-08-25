@@ -11,14 +11,18 @@ export type CategoryTarget =
 
 type AssignTarget = Exclude<CategoryTarget, { type: 'clear' }>;
 
-interface MerchantTransactionRow {
+export interface MerchantTransactionRow {
   id: number;
   bookingDate: string;
   amountCents: number;
-  counterparty: string;
+  currency: string;
   purpose: string | null;
-  effectiveCategory: { name: string; id: number } | null;
+  effectiveCategory: { id: number; name: string } | null;
   overrideCategoryId: number | null;
+  /** Category of an existing purpose-scoped rule whose purposeContains exactly equals
+   *  this transaction's full purpose text, if any — prefills the "Verwendungszweck
+   *  enthält" picker so re-saving the untouched field updates that rule instead of
+   *  creating a duplicate. Null when no such exact-match rule exists (the common case). */
   exactPurposeRuleCategoryId: number | null;
 }
 
@@ -177,43 +181,36 @@ export async function deleteCategory(categoryId: number): Promise<void> {
 }
 
 /**
- * Retrieves all transactions for a given merchant, with resolved category information.
- * Transactions are sorted by bookingDate descending (most recent first).
- * Each row includes the effective category (from rules or override), the override category id,
- * and the exact-purpose rule category id (if a rule with matching purpose exists).
+ * All transactions for one merchant (Gegenpartei), newest first, with their effective
+ * category and per-row rule-picker prefill data. Powers `/categorize`'s per-group,
+ * lazy-loaded transaction list (design spec §3).
  */
 export async function getMerchantTransactionsForKey(merchantKey: string): Promise<MerchantTransactionRow[]> {
-  const categoryRows = await db.select().from(categories);
-  const ruleRows = await db.select().from(merchantCategoryRules);
+  const [categoryRows, ruleRows, allTransactions, accountRows] = await Promise.all([
+    db.select().from(categories),
+    db.select().from(merchantCategoryRules),
+    db.select().from(transactions).orderBy(desc(transactions.bookingDate), desc(transactions.id)),
+    db.select({ id: accounts.id, currency: accounts.currency }).from(accounts),
+  ]);
 
-  const { rulesByMerchantKey, categoriesById } = buildCategoryLookups(categoryRows, ruleRows);
+  const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
+  const rulesForMerchant = rulesByMerchantKey.get(merchantKey) ?? [];
+  const currencyByAccountId = new Map(accountRows.map((a) => [a.id, a.currency]));
 
-  const transactionRows = await db
-    .select()
-    .from(transactions)
-    .where(eq(transactions.counterparty, merchantKey))
-    .orderBy(desc(transactions.bookingDate));
-
-  return transactionRows.map((tx) => {
-    const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
-
-    const effectiveCategory = resolved.categoryId !== null
-      ? { id: resolved.categoryId, name: resolved.categoryName! }
-      : null;
-
-    const exactRule = ruleRows.find(
-      (r) => r.merchantKey === merchantKey && r.purposeContains === tx.purpose
-    );
-
-    return {
-      id: tx.id,
-      bookingDate: tx.bookingDate,
-      amountCents: tx.amountCents,
-      counterparty: tx.counterparty,
-      purpose: tx.purpose,
-      effectiveCategory,
-      overrideCategoryId: tx.categoryOverrideId,
-      exactPurposeRuleCategoryId: exactRule?.categoryId ?? null,
-    };
-  });
+  return allTransactions
+    .filter((tx) => getMerchantKey(tx) === merchantKey)
+    .map((tx) => {
+      const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
+      const exactRule = tx.purpose !== null ? rulesForMerchant.find((r) => r.purposeContains === tx.purpose) : undefined;
+      return {
+        id: tx.id,
+        bookingDate: tx.bookingDate,
+        amountCents: tx.amountCents,
+        currency: currencyByAccountId.get(tx.accountId) ?? 'EUR',
+        purpose: tx.purpose,
+        effectiveCategory: resolved.categoryId !== null ? { id: resolved.categoryId, name: resolved.categoryName! } : null,
+        overrideCategoryId: tx.categoryOverrideId,
+        exactPurposeRuleCategoryId: exactRule?.categoryId ?? null,
+      };
+    });
 }
