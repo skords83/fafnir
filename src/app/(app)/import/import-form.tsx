@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { importCsv } from './actions';
 import type { ImportState } from './import-runner';
@@ -57,7 +58,8 @@ export function ImportForm({ accounts }: { accounts: { id: number; name: string 
           name="accountId"
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          disabled={pending}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
         >
           <option value="">— kein bestehendes Konto —</option>
           {accounts.map((account) => (
@@ -78,7 +80,8 @@ export function ImportForm({ accounts }: { accounts: { id: number; name: string 
           value={newAccountName}
           onChange={(e) => setNewAccountName(e.target.value)}
           placeholder="z. B. Girokonto"
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          disabled={pending}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
         />
       </div>
       <div className="space-y-2">
@@ -92,14 +95,16 @@ export function ImportForm({ accounts }: { accounts: { id: number; name: string 
           type="file"
           accept=".csv"
           required
+          disabled={pending}
           onChange={(e) => setSelectedFilename(e.target.files?.[0]?.name ?? null)}
-          className="block w-full text-sm text-foreground"
+          className="block w-full text-sm text-foreground disabled:opacity-50"
         />
         {state.status === 'error' && selectedFilename && (
           <p className="text-xs text-muted-foreground">Zuletzt ausgewählt: {selectedFilename} — bitte erneut auswählen.</p>
         )}
       </div>
       <Button type="submit" disabled={pending} className="w-full">
+        {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
         {pending ? 'Importiere…' : 'Importieren'}
       </Button>
       {state.status === 'success' && (
