@@ -6,11 +6,13 @@ import {
   applyMerchantRule,
   applyTransactionOverride,
   deleteCategory as deleteCategoryMutation,
+  getMerchantTransactionsForKey,
   renameCategory as renameCategoryMutation,
   type CategoryTarget,
+  type MerchantTransactionRow,
 } from './category-mutations';
 
-export type { CategoryTarget };
+export type { CategoryTarget, MerchantTransactionRow };
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -19,6 +21,11 @@ function revalidateCategorizedPages() {
   revalidatePath('/accounts/[id]', 'page');
   revalidatePath('/categorize');
   revalidatePath('/categories');
+}
+
+export async function getMerchantTransactions(merchantKey: string): Promise<MerchantTransactionRow[]> {
+  await requireSession();
+  return getMerchantTransactionsForKey(merchantKey);
 }
 
 export async function setMerchantRule(
