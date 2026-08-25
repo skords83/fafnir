@@ -13,6 +13,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Link href="/import" className="text-sm text-muted-foreground hover:text-foreground">
             Import
           </Link>
+          <Link href="/categories" className="text-sm text-muted-foreground hover:text-foreground">
+            Kategorien
+          </Link>
         </nav>
         <SignOutButton />
       </header>

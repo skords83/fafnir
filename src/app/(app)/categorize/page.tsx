@@ -49,7 +49,12 @@ export default async function CategorizePage() {
         <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
           ← Zurück
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-foreground">Unkategorisiert</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-foreground">Unkategorisiert</h1>
+          <Link href="/categories" className="text-sm text-muted-foreground hover:text-foreground">
+            Kategorien verwalten
+          </Link>
+        </div>
       </div>
 
       {merchantGroups.length === 0 ? (
