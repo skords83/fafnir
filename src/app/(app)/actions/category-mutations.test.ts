@@ -335,3 +335,54 @@ describe('deleteCategory', () => {
     await expect(deleteCategory(category.id)).rejects.toThrow(/1 Buchung.*1 Regel|1 Regel.*1 Buchung/);
   });
 });
+
+describe('getMerchantTransactionsForKey', () => {
+  test('returns transactions sorted by bookingDate descending', async () => {
+    const { db, schema, getMerchantTransactionsForKey } = await freshDb();
+    await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.', bookingDate: '2026-08-10', externalHash: 'hash-1' });
+    await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.', bookingDate: '2026-08-20', externalHash: 'hash-2' });
+    await seedTransaction(db, schema, { counterparty: 'Aldi Sued Dienstleistungs-SE', bookingDate: '2026-08-15', externalHash: 'hash-3' });
+
+    const result = await getMerchantTransactionsForKey('Amazon EU S.a.r.L.');
+
+    expect(result).toHaveLength(2);
+    expect(result[0].bookingDate).toBe('2026-08-20');
+    expect(result[1].bookingDate).toBe('2026-08-10');
+  });
+
+  test('includes effectiveCategory null when there is no rule for the merchant', async () => {
+    const { db, schema, getMerchantTransactionsForKey } = await freshDb();
+    const tx = await seedTransaction(db, schema, { counterparty: 'Amazon EU S.a.r.L.' });
+
+    const [result] = await getMerchantTransactionsForKey('Amazon EU S.a.r.L.');
+
+    expect(result.effectiveCategory).toBeNull();
+  });
+
+  test("sets exactPurposeRuleCategoryId only when a rule's purposeContains exactly equals the full purpose", async () => {
+    const { db, schema, getMerchantTransactionsForKey } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Onlineshopping' }).returning();
+    await db.insert(schema.merchantCategoryRules).values({
+      merchantKey: 'Amazon',
+      purposeContains: 'AMAZON MKTPLC DE',
+      categoryId: category.id,
+    });
+    await seedTransaction(db, schema, {
+      counterparty: 'Amazon',
+      purpose: 'AMAZON MKTPLC DE',
+      externalHash: 'hash-1',
+    });
+    await seedTransaction(db, schema, {
+      counterparty: 'Amazon',
+      purpose: 'AMAZON MKTPLC DE 1234',
+      externalHash: 'hash-2',
+    });
+
+    const rows = await getMerchantTransactionsForKey('Amazon');
+    const exact = rows.find((r) => r.purpose === 'AMAZON MKTPLC DE');
+    const partial = rows.find((r) => r.purpose === 'AMAZON MKTPLC DE 1234');
+
+    expect(exact?.exactPurposeRuleCategoryId).toBe(category.id);
+    expect(partial?.exactPurposeRuleCategoryId).toBeNull();
+  });
+});

@@ -1,6 +1,8 @@
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { categories, merchantCategoryRules, transactions } from '@/db/schema';
+import { accounts, categories, merchantCategoryRules, transactions } from '@/db/schema';
+import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { getMerchantKey } from '@/lib/merchant-key';
 
 export type CategoryTarget =
   | { type: 'category'; categoryId: number }
@@ -8,6 +10,17 @@ export type CategoryTarget =
   | { type: 'clear' };
 
 type AssignTarget = Exclude<CategoryTarget, { type: 'clear' }>;
+
+interface MerchantTransactionRow {
+  id: number;
+  bookingDate: string;
+  amountCents: number;
+  counterparty: string;
+  purpose: string | null;
+  effectiveCategory: { name: string; id: number } | null;
+  overrideCategoryId: number | null;
+  exactPurposeRuleCategoryId: number | null;
+}
 
 /**
  * Resolves an assign-type target to a concrete category id: an existing id is
@@ -161,4 +174,46 @@ export async function deleteCategory(categoryId: number): Promise<void> {
     }
     throw err;
   }
+}
+
+/**
+ * Retrieves all transactions for a given merchant, with resolved category information.
+ * Transactions are sorted by bookingDate descending (most recent first).
+ * Each row includes the effective category (from rules or override), the override category id,
+ * and the exact-purpose rule category id (if a rule with matching purpose exists).
+ */
+export async function getMerchantTransactionsForKey(merchantKey: string): Promise<MerchantTransactionRow[]> {
+  const categoryRows = await db.select().from(categories);
+  const ruleRows = await db.select().from(merchantCategoryRules);
+
+  const { rulesByMerchantKey, categoriesById } = buildCategoryLookups(categoryRows, ruleRows);
+
+  const transactionRows = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.counterparty, merchantKey))
+    .orderBy(desc(transactions.bookingDate));
+
+  return transactionRows.map((tx) => {
+    const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
+
+    const effectiveCategory = resolved.categoryId !== null
+      ? { id: resolved.categoryId, name: resolved.categoryName! }
+      : null;
+
+    const exactRule = ruleRows.find(
+      (r) => r.merchantKey === merchantKey && r.purposeContains === tx.purpose
+    );
+
+    return {
+      id: tx.id,
+      bookingDate: tx.bookingDate,
+      amountCents: tx.amountCents,
+      counterparty: tx.counterparty,
+      purpose: tx.purpose,
+      effectiveCategory,
+      overrideCategoryId: tx.categoryOverrideId,
+      exactPurposeRuleCategoryId: exactRule?.categoryId ?? null,
+    };
+  });
 }
