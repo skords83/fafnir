@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCents } from '@/lib/format';
 import type { CategoryBreakdownPoint } from '@/lib/dashboard-stats';
@@ -12,18 +12,26 @@ import {
   buildSlices,
 } from '@/lib/category-chart-colors';
 
+function subscribeToColorScheme(callback: () => void) {
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  query.addEventListener('change', callback);
+  return () => query.removeEventListener('change', callback);
+}
+
+function getPrefersDarkSnapshot() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function getPrefersDarkServerSnapshot() {
+  return false;
+}
+
+// useSyncExternalStore (rather than an effect that calls setState) is the
+// React-recommended way to read a browser API: it avoids the extra render
+// pass an effect-driven setState would trigger, and stays consistent
+// between SSR and the client.
 function usePrefersDarkMode() {
-  const [prefersDark, setPrefersDark] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-color-scheme: dark)');
-    setPrefersDark(query.matches);
-    const handleChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
-    query.addEventListener('change', handleChange);
-    return () => query.removeEventListener('change', handleChange);
-  }, []);
-
-  return prefersDark;
+  return useSyncExternalStore(subscribeToColorScheme, getPrefersDarkSnapshot, getPrefersDarkServerSnapshot);
 }
 
 export function CategoryPieChart({ data, currency }: { data: CategoryBreakdownPoint[]; currency: string }) {

@@ -21,14 +21,28 @@ export function ImportForm({ accounts }: { accounts: { id: number; name: string 
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Reset the controlled fields the moment a submission succeeds. This adjusts
+  // state during render (the pattern React docs recommend for "state derived
+  // from a previous render") instead of calling setState from an effect, which
+  // would cost an extra render pass; React discards the stale render here and
+  // repaints once with the cleared values.
+  const [handledStatus, setHandledStatus] = useState(state.status);
+  if (state.status !== handledStatus) {
+    setHandledStatus(state.status);
     if (state.status === 'success') {
       setAccountId('');
       setNewAccountName('');
       setSelectedFilename(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    }
+  }
+
+  // The file input can't be controlled the same way (browsers won't let JS
+  // set its value via a prop), so clearing it stays an imperative DOM write
+  // in an effect — it doesn't call setState, so it's unaffected by the rule
+  // against setState-in-effects above.
+  useEffect(() => {
+    if (state.status === 'success' && fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   }, [state]);
 
