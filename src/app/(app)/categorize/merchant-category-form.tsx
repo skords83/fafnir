@@ -184,7 +184,7 @@ function PurposeRuleRow({
           onChange={(event) => setPurposeContains(event.target.value)}
           placeholder="Verwendungszweck enthält…"
           aria-label="Verwendungszweck enthält"
-          className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+          className="w-64 rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
         />
         <CategoryPicker
           categories={categories}

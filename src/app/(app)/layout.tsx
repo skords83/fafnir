@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import Link from 'next/link';
 import { SignOutButton } from '@/components/sign-out-button';
+import { ToastProvider } from '@/components/toast-provider';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -19,7 +20,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </nav>
         <SignOutButton />
       </header>
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-6">
+        <ToastProvider>{children}</ToastProvider>
+      </main>
     </div>
   );
 }

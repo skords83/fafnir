@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react';
 import type { CategoryTarget } from '@/app/(app)/actions/category-mutations';
 import type { ActionResult } from '@/app/(app)/actions/categories';
+import { useToast } from '@/components/toast-provider';
 
 const NEW_CATEGORY_VALUE = '__new__';
 
@@ -21,6 +22,7 @@ export function CategoryPicker({ categories, selectedCategoryId, showClear, clea
   const [newCategoryName, setNewCategoryName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
 
   const isNew = selection === NEW_CATEGORY_VALUE;
   const canSubmit = isNew ? newCategoryName.trim() !== '' : selection !== '';
@@ -32,7 +34,9 @@ export function CategoryPicker({ categories, selectedCategoryId, showClear, clea
         const result = await onSubmit(target);
         if (!result.ok) {
           setError(result.error);
+          return;
         }
+        showToast(target.type === 'clear' ? 'Entfernt' : 'Gespeichert');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Fehler beim Speichern.');
       }
