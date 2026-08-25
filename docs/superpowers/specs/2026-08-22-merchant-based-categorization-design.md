@@ -215,6 +215,53 @@ Nacharbeiten an dieser Funktion.
 
 ## Offene Punkte für den Implementierungsplan
 
-Keine — alle Design-Entscheidungen sind mit dem Nutzer abgestimmt
-(Schema-Aufräumung, Route statt Dashboard-Abschnitt, Inline-Formular statt
-Detailseite, abgeleiteter Titel als Gegenpartei-Identität).
+### TODO: `purposeContains` — feingranularer merchantKey für Gegenparteien mit mehreren Buchungsarten
+
+**Hintergrund:** Verifikation gegen die echten 102 Testtransaktionen (2026-08-22)
+zeigt, dass Gegenparteien wie "Rudolf Steiner Schulverein Hamburg- Wandsbek
+e.V." mit mehreren, kategorial unterschiedlichen Buchungsarten auftreten
+(Schulgeld, Hort, Gehalt), aber identischem
+`deriveTransactionDisplay(tx).title` — also identischem `merchantKey`. Eine
+einzelne `merchant_category_rules`-Zeile pro `merchantKey` kann diese Fälle
+nicht unterscheiden. Laut Nutzer betroffen: Arbeitgeber und Vater. Das
+Betrags-Vorzeichen (Einnahme/Ausgabe) reicht in beiden Fällen **nicht** als
+Unterscheidungsmerkmal.
+
+**Entscheidung:** Fall B2 — merchantKey-Bildung erweitern, generisch für
+jede Gegenpartei nutzbar, ohne die bewusst entfernte automatische
+Keyword-/Regex-*Vorschlags*-Engine wiederzubeleben. Der Nutzer legt Regeln
+weiterhin manuell an; `purposeContains` ist nur eine zusätzliche, vom Nutzer
+selbst befüllte Verfeinerung einer manuell angelegten Regel — kein
+automatisches Matching/Kategorisieren unbekannter Transaktionen.
+
+**Umsetzung:**
+
+1. Schema: `merchant_category_rules.purposeContains` (nullable text).
+   Unique-Index wird `(merchantKey, purposeContains)` statt `(merchantKey)`.
+2. App-Constraint (nicht per DB-Unique-Index abbildbar, da SQLite `NULL` in
+   Unique-Indizes paarweise als verschieden behandelt): höchstens eine Regel
+   mit `purposeContains IS NULL` pro `merchantKey` (Fallback-Regel).
+3. Validierung bei Regel-Anlage: ein neues `purposeContains` darf mit keinem
+   bestehenden `purposeContains` derselben `merchantKey` in einer
+   Substring-Beziehung stehen (in beide Richtungen) → sonst Fehler statt
+   stillem Laufzeit-Konflikt. Dadurch ist Überschneidung strukturell
+   ausgeschlossen und es braucht keinen Tiebreak zur Auflösungszeit.
+4. `resolveTransactionCategory()` — Auflösungsreihenfolge erweitern:
+   a. `tx.categoryOverrideId` gesetzt? → diese Kategorie.
+   b. sonst: Regel mit passendem `merchantKey` UND `purposeContains`
+      als Substring von `tx.purpose`? → diese Kategorie.
+   c. sonst: Regel mit passendem `merchantKey` UND `purposeContains IS
+      NULL`? → diese Kategorie.
+   d. sonst: unkategorisiert.
+5. UI (`/categorize`, `MerchantCategoryForm`): Option "nach
+   Verwendungszweck aufteilen" für Gegenparteien mit mehreren erkennbar
+   unterschiedlichen `purpose`-Mustern; pro Teil-Regel ein
+   `purposeContains`-Eingabefeld plus Kategorie-Auswahl.
+
+**Ausdrücklich nicht Teil dieser Erweiterung:** automatische Erkennung von
+"Intermediär"-Gegenparteien (z. B. `Postbank AG` bei Auslands-Kartenterminal-
+Buchungen, `PayPal (Europe) S.a r.l. et Cie, S.C.A.`) — diese betreffen in
+den 102 Testtransaktionen weitere 28 Buchungen mit demselben Muster
+(identischer `merchantKey`, unterschiedlicher realer Empfänger im
+`purpose`), sollen laut Nutzer aber bewusst nicht auseinandersortiert
+werden (Fall A für diese Fälle).
