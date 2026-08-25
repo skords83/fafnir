@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react';
 import { formatCents, formatDayHeading } from '@/lib/format';
 import { deriveTransactionDisplay } from '@/lib/transaction-display';
 import { groupTransactionsByDay } from '@/lib/transaction-grouping';
@@ -84,9 +85,12 @@ export function TransactionList({
             ))}
             {group.collapsed && (
               <li>
-                <details>
+                <details className="group">
                   <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground">
-                    <span>{group.collapsed.transactions.length} weitere Buchungen</span>
+                    <span className="flex items-center gap-2">
+                      <ChevronDown className="size-4 shrink-0 transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
+                      {group.collapsed.transactions.length} weitere Buchungen
+                    </span>
                     <span className={cn('tabular-nums', amountColorClass(group.collapsed.totalCents))}>
                       {formatCents(group.collapsed.totalCents, currency)}
                     </span>
