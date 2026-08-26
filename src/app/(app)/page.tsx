@@ -12,6 +12,7 @@ import {
   calculateMonthSummary,
   calculateMonthlyTrends,
   calculateCategoryBreakdown,
+  groupBreakdownByParent,
 } from '@/lib/dashboard-stats';
 import { IncomeExpenseBarChart } from '@/components/dashboard/income-expense-chart';
 import { CategoryPieChart } from '@/components/dashboard/category-pie-chart';
@@ -108,6 +109,8 @@ export default async function DashboardPage() {
     tx.bookingDate.startsWith(currentMonthKey)
   );
   const categoryBreakdown = calculateCategoryBreakdown(currentMonthTxs);
+  const categoryBreakdownByParent = groupBreakdownByParent(categoryBreakdown, categoriesById);
+  const hasCategoryGroups = categoryRows.some((c) => c.parentCategoryId !== null);
 
   // Prepare recent transactions
   const recentTransactions = recentRawTxs.map((tx) => {
@@ -178,7 +181,12 @@ export default async function DashboardPage() {
 
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 text-sm font-medium text-foreground">Kategorien im aktuellen Monat</h2>
-          <CategoryPieChart data={categoryBreakdown} currency={account.currency} />
+          <CategoryPieChart
+            data={categoryBreakdown}
+            dataByParent={categoryBreakdownByParent}
+            hasGroups={hasCategoryGroups}
+            currency={account.currency}
+          />
         </div>
       </div>
 
