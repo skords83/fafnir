@@ -3,6 +3,8 @@ import { getMerchantKey } from './merchant-key';
 export interface CategoryRef {
   id: number;
   name: string;
+  /** Optional so existing test fixtures and any caller that only has {id, name} keep compiling. */
+  parentCategoryId?: number | null;
 }
 
 export interface MerchantRuleEntry {

@@ -161,4 +161,16 @@ describe('buildCategoryLookups', () => {
     expect(categoriesById.get(1)).toEqual({ id: 1, name: 'Lebensmittel' });
     expect(rulesByMerchantKey.get('Rewe Markt GmbH')).toEqual([{ purposeContains: null, categoryId: 1 }]);
   });
+
+  test('carries parentCategoryId through into categoriesById', () => {
+    const categories = [
+      { id: 1, name: 'Gas', parentCategoryId: 2 },
+      { id: 2, name: 'Wohnen', parentCategoryId: null },
+    ];
+
+    const { categoriesById } = buildCategoryLookups(categories, []);
+
+    expect(categoriesById.get(1)?.parentCategoryId).toBe(2);
+    expect(categoriesById.get(2)?.parentCategoryId).toBeNull();
+  });
 });
