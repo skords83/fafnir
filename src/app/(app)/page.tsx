@@ -6,7 +6,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { requireSession } from '@/lib/session';
 import { formatCents } from '@/lib/format';
-import { buildCategoryLookups, findGoverningMerchantRule, resolveTransactionCategory } from '@/lib/category-resolution';
+import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
 import { getMerchantKey } from '@/lib/merchant-key';
 import {
   calculateMonthSummary,
@@ -113,14 +113,10 @@ export default async function DashboardPage() {
   const recentTransactions = recentRawTxs.map((tx) => {
     const resolved = resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById);
     const merchantKey = getMerchantKey(tx);
-    const governingRule = findGoverningMerchantRule(tx, rulesByMerchantKey);
     return {
       ...tx,
       merchantKey,
       effectiveCategory: resolved.categoryId !== null ? { id: resolved.categoryId, name: resolved.categoryName! } : null,
-      overrideCategoryId: tx.categoryOverrideId,
-      merchantRuleCategoryId: governingRule?.categoryId ?? null,
-      merchantRulePurposeContains: governingRule?.purposeContains ?? null,
     };
   });
 
@@ -194,7 +190,7 @@ export default async function DashboardPage() {
             Alle anzeigen →
           </Link>
         </div>
-        <TransactionList rows={recentTransactions} currency={account.currency} categories={categoryRows} />
+        <TransactionList rows={recentTransactions} currency={account.currency} />
       </div>
     </div>
   );
