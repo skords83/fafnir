@@ -42,16 +42,20 @@ export function MerchantGroup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function loadTransactions() {
+    setIsLoading(true);
+    setLoadError(null);
+    return getMerchantTransactions(merchantKey)
+      .then((rows) => setTransactions(rows))
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Fehler beim Laden der Buchungen.'))
+      .finally(() => setIsLoading(false));
+  }
+
   function handleToggle() {
     const opening = !isOpen;
     setIsOpen(opening);
     if (opening && transactions === null && !isLoading) {
-      setIsLoading(true);
-      setLoadError(null);
-      getMerchantTransactions(merchantKey)
-        .then((rows) => setTransactions(rows))
-        .catch((err) => setLoadError(err instanceof Error ? err.message : 'Fehler beim Laden der Buchungen.'))
-        .finally(() => setIsLoading(false));
+      loadTransactions();
     }
   }
 
@@ -80,7 +84,13 @@ export function MerchantGroup({
           {transactions && (
             <ul className="space-y-2">
               {transactions.map((tx) => (
-                <TransactionDetailRow key={tx.id} tx={tx} merchantKey={merchantKey} categories={categories} />
+                <TransactionDetailRow
+                  key={tx.id}
+                  tx={tx}
+                  merchantKey={merchantKey}
+                  categories={categories}
+                  onSaved={loadTransactions}
+                />
               ))}
             </ul>
           )}

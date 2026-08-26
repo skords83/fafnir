@@ -10,10 +10,15 @@ export function TransactionDetailRow({
   tx,
   merchantKey,
   categories,
+  onSaved,
 }: {
   tx: MerchantTransactionRow;
   merchantKey: string;
   categories: { id: number; name: string }[];
+  /** Called after a successful save so the parent can refresh this group's cached
+   *  transactions — a purpose-contains rule can affect other rows in the same group too,
+   *  not just this one, so a full refetch is more correct than patching this row alone. */
+  onSaved?: () => void;
 }) {
   const [purposeText, setPurposeText] = useState(tx.purpose ?? '');
 
@@ -40,7 +45,13 @@ export function TransactionDetailRow({
             selectedCategoryId={tx.overrideCategoryId}
             showClear={tx.overrideCategoryId !== null}
             clearLabel="Standard (Gegenpartei-Regel verwenden)"
-            onSubmit={(target) => setTransactionOverride(tx.id, target)}
+            onSubmit={async (target) => {
+              const result = await setTransactionOverride(tx.id, target);
+              if (result.ok) {
+                onSaved?.();
+              }
+              return result;
+            }}
           />
         </div>
 
@@ -58,7 +69,17 @@ export function TransactionDetailRow({
             selectedCategoryId={tx.exactPurposeRuleCategoryId}
             showClear={false}
             clearLabel="Kategorie entfernen"
-            onSubmit={(target) => setMerchantRule(merchantKey, purposeText.trim(), target)}
+            onSubmit={async (target) => {
+              const trimmed = purposeText.trim();
+              if (trimmed === '') {
+                throw new Error('Verwendungszweck darf nicht leer sein.');
+              }
+              const result = await setMerchantRule(merchantKey, trimmed, target);
+              if (result.ok) {
+                onSaved?.();
+              }
+              return result;
+            }}
           />
         </div>
       </div>
