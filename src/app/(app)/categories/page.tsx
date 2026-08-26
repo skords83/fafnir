@@ -19,6 +19,15 @@ export default async function CategoriesPage() {
     }))
   );
 
+  // Build a map of which categories are parents (have children)
+  const childrenByParent = new Map<number | null, number[]>();
+  categoryRows.forEach((cat) => {
+    if (!childrenByParent.has(cat.parent_id)) {
+      childrenByParent.set(cat.parent_id, []);
+    }
+    childrenByParent.get(cat.parent_id)!.push(cat.id);
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -35,7 +44,15 @@ export default async function CategoriesPage() {
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {rowsWithUsage.map(({ category, usage }) => (
-            <CategoryRow key={category.id} category={category} usage={usage} />
+            <CategoryRow
+              key={category.id}
+              category={category}
+              usage={usage}
+              parentOptions={categoryRows
+                .filter((c) => c.id !== category.id)
+                .map((c) => ({ id: c.id, name: c.name }))}
+              hasChildren={Boolean((childrenByParent.get(category.id) ?? []).length > 0)}
+            />
           ))}
         </ul>
       )}

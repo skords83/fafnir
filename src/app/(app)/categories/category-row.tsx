@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useTransition, type FormEvent } from 'react';
-import { deleteCategory, renameCategory } from '@/app/(app)/actions/categories';
+import {
+  deleteCategory,
+  renameCategory,
+  setCategoryParent,
+} from '@/app/(app)/actions/categories';
 
 export interface CategoryUsage {
   transactionCount: number;
@@ -11,14 +15,20 @@ export interface CategoryUsage {
 export function CategoryRow({
   category,
   usage,
+  parentOptions,
+  hasChildren,
 }: {
-  category: { id: number; name: string };
+  category: { id: number; name: string; parent_id: number | null };
   usage: CategoryUsage;
+  parentOptions: Array<{ id: number; name: string }>;
+  hasChildren: boolean;
 }) {
   const [name, setName] = useState(category.name);
   const [persistedName, setPersistedName] = useState(category.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [selectedParentId, setSelectedParentId] = useState<number | null>(category.parent_id);
+  const [parentError, setParentError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const trimmed = name.trim();
@@ -44,6 +54,20 @@ export function CategoryRow({
       const result = await deleteCategory(category.id);
       if (!result.ok) {
         setDeleteError(result.error);
+      }
+    });
+  }
+
+  function handleParentChange(event: React.ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value;
+    const parentId = value === '' ? null : parseInt(value, 10);
+    setSelectedParentId(parentId);
+    setParentError(null);
+    startTransition(async () => {
+      const result = await setCategoryParent(category.id, parentId);
+      if (!result.ok) {
+        setParentError(result.error);
+        setSelectedParentId(category.parent_id);
       }
     });
   }
@@ -83,6 +107,20 @@ export function CategoryRow({
         <p className="text-xs text-muted-foreground">
           {usageParts.length > 0 ? usageParts.join(' · ') : 'Nicht verwendet'}
         </p>
+        <select
+          value={selectedParentId === null ? '' : selectedParentId}
+          onChange={handleParentChange}
+          disabled={isPending || hasChildren}
+          aria-label="Oberkategorie"
+          className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-50"
+        >
+          <option value="">Keine Oberkategorie</option>
+          {parentOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={handleDelete}
@@ -93,6 +131,7 @@ export function CategoryRow({
           Löschen
         </button>
         {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+        {parentError && <p className="text-xs text-destructive">{parentError}</p>}
       </div>
     </li>
   );
