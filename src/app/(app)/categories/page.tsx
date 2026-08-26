@@ -19,6 +19,28 @@ export default async function CategoriesPage() {
     }))
   );
 
+  const parentOptions = sorted
+    .filter((category) => category.parentCategoryId === null)
+    .map(({ id, name }) => ({ id, name }));
+
+  const childrenByParentId = new Map<number, typeof rowsWithUsage>();
+  const ungrouped: typeof rowsWithUsage = [];
+  for (const row of rowsWithUsage) {
+    const parentId = row.category.parentCategoryId;
+    if (parentId === null) {
+      ungrouped.push(row);
+    } else {
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, []);
+      }
+      childrenByParentId.get(parentId)!.push(row);
+    }
+  }
+  const hasChildrenIds = new Set(childrenByParentId.keys());
+  const groups = sorted
+    .filter((category) => childrenByParentId.has(category.id))
+    .map((category) => ({ parent: category, children: childrenByParentId.get(category.id)! }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -33,11 +55,45 @@ export default async function CategoriesPage() {
           Noch keine Kategorien angelegt.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
-          {rowsWithUsage.map(({ category, usage }) => (
-            <CategoryRow key={category.id} category={category} usage={usage} />
+        <div className="space-y-6">
+          {groups.map(({ parent, children }) => (
+            <div key={parent.id}>
+              <h2 className="mb-2 text-sm font-semibold text-foreground">{parent.name}</h2>
+              <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                {children.map(({ category, usage }) => (
+                  <CategoryRow
+                    key={category.id}
+                    category={category}
+                    usage={usage}
+                    parentOptions={parentOptions}
+                    hasChildren={hasChildrenIds.has(category.id)}
+                  />
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+
+          <div>
+            {groups.length > 0 && (
+              <h2 className="mb-2 text-sm font-semibold text-foreground">Ohne Oberkategorie</h2>
+            )}
+            {ungrouped.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Keine.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                {ungrouped.map(({ category, usage }) => (
+                  <CategoryRow
+                    key={category.id}
+                    category={category}
+                    usage={usage}
+                    parentOptions={parentOptions}
+                    hasChildren={hasChildrenIds.has(category.id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
