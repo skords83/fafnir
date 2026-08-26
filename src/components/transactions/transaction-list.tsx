@@ -36,6 +36,7 @@ function TransactionRow({ tx, currency }: { tx: TransactionListRow; currency: st
       {context && <p className="mt-0.5 truncate text-xs text-muted-foreground">{context}</p>}
       <Link
         href={categorizeHref}
+        scroll={false}
         className="mt-1 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground"
       >
         {tx.effectiveCategory ? tx.effectiveCategory.name : 'Unkategorisiert'}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { getMerchantTransactions } from '@/app/(app)/actions/categories';
 import type { MerchantTransactionRow } from '@/app/(app)/actions/categories';
@@ -28,6 +28,19 @@ export function MerchantGroup({
   const [transactions, setTransactions] = useState<MerchantTransactionRow[] | null>(initialTransactions);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const listItemRef = useRef<HTMLLIElement>(null);
+
+  // On a client-side navigation (e.g. the status-badge Link from the dashboard
+  // or an account page), the browser's own hash-scroll can fire before this
+  // deep-linked group has mounted and the page has settled into its final
+  // layout, landing short of the target. Scroll explicitly once on mount
+  // instead of relying on that race.
+  useEffect(() => {
+    if (initiallyOpen) {
+      listItemRef.current?.scrollIntoView({ block: 'start' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleToggle() {
     const opening = !isOpen;
@@ -43,7 +56,7 @@ export function MerchantGroup({
   }
 
   return (
-    <li id={`group-${encodeURIComponent(merchantKey)}`} className="px-4 py-3">
+    <li ref={listItemRef} id={`group-${encodeURIComponent(merchantKey)}`} className="px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={handleToggle} className="flex items-center gap-2 text-left">
           <ChevronDown
