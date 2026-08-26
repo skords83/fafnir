@@ -18,7 +18,7 @@ export function CategoryRow({
   parentOptions,
   hasChildren,
 }: {
-  category: { id: number; name: string; parent_id: number | null };
+  category: { id: number; name: string; parentCategoryId: number | null };
   usage: CategoryUsage;
   parentOptions: Array<{ id: number; name: string }>;
   hasChildren: boolean;
@@ -27,8 +27,7 @@ export function CategoryRow({
   const [persistedName, setPersistedName] = useState(category.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(category.parent_id);
-  const [parentError, setParentError] = useState<string | null>(null);
+  const [setParentError, setSetParentError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const trimmed = name.trim();
@@ -58,16 +57,13 @@ export function CategoryRow({
     });
   }
 
-  function handleParentChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value;
+  function handleParentChange(value: string) {
     const parentId = value === '' ? null : parseInt(value, 10);
-    setSelectedParentId(parentId);
-    setParentError(null);
+    setSetParentError(null);
     startTransition(async () => {
       const result = await setCategoryParent(category.id, parentId);
       if (!result.ok) {
-        setParentError(result.error);
-        setSelectedParentId(category.parent_id);
+        setSetParentError(result.error);
       }
     });
   }
@@ -107,20 +103,30 @@ export function CategoryRow({
         <p className="text-xs text-muted-foreground">
           {usageParts.length > 0 ? usageParts.join(' · ') : 'Nicht verwendet'}
         </p>
-        <select
-          value={selectedParentId === null ? '' : selectedParentId}
-          onChange={handleParentChange}
-          disabled={isPending || hasChildren}
-          aria-label="Oberkategorie"
-          className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-50"
-        >
-          <option value="">Keine Oberkategorie</option>
-          {parentOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-1">
+          <select
+            value={category.parentCategoryId ?? ''}
+            onChange={(e) => handleParentChange(e.target.value)}
+            disabled={isPending || hasChildren}
+            title={
+              hasChildren
+                ? 'Diese Kategorie ist selbst Oberkategorie anderer Kategorien und kann keine eigene Oberkategorie erhalten.'
+                : undefined
+            }
+            aria-label={`Oberkategorie von „${category.name}"`}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-50"
+          >
+            <option value="">Keine Oberkategorie</option>
+            {parentOptions
+              .filter((option) => option.id !== category.id)
+              .map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+          </select>
+          {setParentError && <p className="text-xs text-destructive">{setParentError}</p>}
+        </div>
         <button
           type="button"
           onClick={handleDelete}
@@ -131,7 +137,6 @@ export function CategoryRow({
           Löschen
         </button>
         {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
-        {parentError && <p className="text-xs text-destructive">{parentError}</p>}
       </div>
     </li>
   );
