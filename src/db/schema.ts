@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex, index, AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 export const accounts = sqliteTable('accounts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -11,6 +11,7 @@ export const accounts = sqliteTable('accounts', {
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
+  parentCategoryId: integer('parent_category_id').references((): AnySQLiteColumn => categories.id),
 }, (t) => ({
   uniqueName: uniqueIndex('uniq_category_name').on(t.name),
 }));
