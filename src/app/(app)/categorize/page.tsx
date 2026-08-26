@@ -4,12 +4,18 @@ import { categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { requireSession } from '@/lib/session';
 import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
 import { getMerchantKey } from '@/lib/merchant-key';
-import { MerchantCategoryForm } from './merchant-category-form';
+import { getMerchantTransactionsForKey } from '../actions/category-mutations';
+import { MerchantGroup } from './merchant-group';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CategorizePage() {
+export default async function CategorizePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ merchant?: string }>;
+}) {
   await requireSession();
+  const { merchant: deepLinkMerchant } = await searchParams;
 
   const [allTransactions, categoryRows, ruleRows] = await Promise.all([
     db
@@ -26,12 +32,14 @@ export default async function CategorizePage() {
   const { categoriesById, rulesByMerchantKey } = buildCategoryLookups(categoryRows, ruleRows);
 
   const uncategorizedCountByMerchant = new Map<string, number>();
+  const totalCountByMerchant = new Map<string, number>();
   for (const tx of allTransactions) {
+    const key = getMerchantKey(tx);
+    totalCountByMerchant.set(key, (totalCountByMerchant.get(key) ?? 0) + 1);
     if (resolveTransactionCategory(tx, rulesByMerchantKey, categoriesById).source === 'none') {
-      const key = getMerchantKey(tx);
-      // A merchant with any rule at all (even one that doesn't match every one of its
-      // transactions) belongs in the "already categorized" section below, not here — a
-      // merchant must appear in exactly one section, never both.
+      // A merchant with any rule at all belongs in the "already categorized" section below,
+      // even if that rule doesn't cover every one of its transactions — a merchant appears
+      // in exactly one section, never both.
       if (rulesByMerchantKey.has(key)) continue;
       uncategorizedCountByMerchant.set(key, (uncategorizedCountByMerchant.get(key) ?? 0) + 1);
     }
@@ -42,6 +50,9 @@ export default async function CategorizePage() {
     .sort((a, b) => b.txCount - a.txCount);
 
   const categorizedMerchantKeys = [...rulesByMerchantKey.keys()].sort((a, b) => a.localeCompare(b));
+
+  const deepLinkTransactions =
+    deepLinkMerchant !== undefined ? await getMerchantTransactionsForKey(deepLinkMerchant) : null;
 
   return (
     <div className="space-y-6">
@@ -64,15 +75,14 @@ export default async function CategorizePage() {
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {merchantGroups.map((group) => (
-            <li key={group.merchantKey} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div>
-                <p className="font-medium text-foreground">{group.merchantKey}</p>
-                <p className="text-xs text-muted-foreground">
-                  {group.txCount} Buchung{group.txCount === 1 ? '' : 'en'}
-                </p>
-              </div>
-              <MerchantCategoryForm merchantKey={group.merchantKey} categories={categoryRows} />
-            </li>
+            <MerchantGroup
+              key={group.merchantKey}
+              merchantKey={group.merchantKey}
+              txCount={group.txCount}
+              categories={categoryRows}
+              initiallyOpen={group.merchantKey === deepLinkMerchant}
+              initialTransactions={group.merchantKey === deepLinkMerchant ? deepLinkTransactions : null}
+            />
           ))}
         </ul>
       )}
@@ -82,14 +92,15 @@ export default async function CategorizePage() {
           <h2 className="text-lg font-semibold text-foreground">Bereits kategorisierte Gegenparteien</h2>
           <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-card">
             {categorizedMerchantKeys.map((merchantKey) => (
-              <li key={merchantKey} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="font-medium text-foreground">{merchantKey}</p>
-                <MerchantCategoryForm
-                  merchantKey={merchantKey}
-                  categories={categoryRows}
-                  existingRules={rulesByMerchantKey.get(merchantKey)!}
-                />
-              </li>
+              <MerchantGroup
+                key={merchantKey}
+                merchantKey={merchantKey}
+                txCount={totalCountByMerchant.get(merchantKey) ?? 0}
+                categories={categoryRows}
+                existingRules={rulesByMerchantKey.get(merchantKey)!}
+                initiallyOpen={merchantKey === deepLinkMerchant}
+                initialTransactions={merchantKey === deepLinkMerchant ? deepLinkTransactions : null}
+              />
             ))}
           </ul>
         </div>
