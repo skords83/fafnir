@@ -144,75 +144,47 @@ export function calculateCategoryBreakdown(
   return result;
 }
 
+/**
+ * Re-buckets an already-computed category breakdown by parent category: every point
+ * whose category has a `parentCategoryId` is folded into that parent's bucket (summed,
+ * percentages recomputed); everything else (ungrouped categories, the null-categoryId
+ * "Unkategorisiert" bucket) passes through unchanged. Pure post-processing — never
+ * queries the database itself, so it stays a cheap second view over data the caller
+ * already has.
+ */
 export function groupBreakdownByParent(
   points: CategoryBreakdownPoint[],
   categoriesById: Map<number, { name: string; parentCategoryId?: number | null }>
 ): CategoryBreakdownPoint[] {
-  const bucketMap = new Map<
-    string,
-    { categoryId: number | null; name: string; amount: number }
-  >();
+  const buckets = new Map<string, { categoryId: number | null; name: string; amount: number }>();
 
-  // Re-bucket each point by its parent category
   for (const point of points) {
-    if (point.categoryId === null) {
-      // Categories with null categoryId stay as-is
-      const mapKey = `null:${point.categoryName}`;
-      if (!bucketMap.has(mapKey)) {
-        bucketMap.set(mapKey, {
-          categoryId: null,
-          name: point.categoryName,
-          amount: 0,
-        });
-      }
-      const entry = bucketMap.get(mapKey)!;
-      entry.amount += point.amountCents;
-    } else {
-      const category = categoriesById.get(point.categoryId);
-      if (!category) {
-        continue; // Skip if category not found in map
-      }
+    const category = point.categoryId !== null ? categoriesById.get(point.categoryId) : undefined;
+    const parentId = category?.parentCategoryId ?? null;
+    const bucketCategoryId = parentId ?? point.categoryId;
+    const bucketName =
+      bucketCategoryId !== null ? (categoriesById.get(bucketCategoryId)?.name ?? point.categoryName) : point.categoryName;
+    const mapKey = `${bucketCategoryId ?? 'null'}:${bucketName}`;
 
-      // Determine bucket: use parent if exists, otherwise use category itself
-      const parentId = category.parentCategoryId ?? point.categoryId;
-      const bucketCategory = categoriesById.get(parentId);
-      const bucketName = bucketCategory?.name ?? point.categoryName;
-      const mapKey = `${parentId}:${bucketName}`;
-
-      if (!bucketMap.has(mapKey)) {
-        bucketMap.set(mapKey, {
-          categoryId: parentId,
-          name: bucketName,
-          amount: 0,
-        });
-      }
-      const entry = bucketMap.get(mapKey)!;
-      entry.amount += point.amountCents;
+    if (!buckets.has(mapKey)) {
+      buckets.set(mapKey, { categoryId: bucketCategoryId, name: bucketName, amount: 0 });
     }
+    buckets.get(mapKey)!.amount += point.amountCents;
   }
 
-  // Calculate total expenses to compute percentages
-  const totalExpenses = Array.from(bucketMap.values()).reduce(
-    (sum, entry) => sum + entry.amount,
-    0
-  );
+  const totalExpenses = Array.from(buckets.values()).reduce((sum, b) => sum + b.amount, 0);
 
-  // Convert to result array, sorted by amount descending
-  const result: CategoryBreakdownPoint[] = Array.from(bucketMap).map(
-    ([, { categoryId, name, amount }]) => ({
-      categoryId,
-      categoryName: name,
-      amountCents: amount,
-      percentage:
-        totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
-    })
-  );
+  const result: CategoryBreakdownPoint[] = Array.from(buckets.values()).map(({ categoryId, name, amount }) => ({
+    categoryId,
+    categoryName: name,
+    amountCents: amount,
+    percentage: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
+  }));
 
   result.sort((a, b) => {
     if (b.amountCents !== a.amountCents) {
       return b.amountCents - a.amountCents;
     }
-    // When amounts are equal, sort by categoryId descending (nulls last)
     const aId = a.categoryId ?? -1;
     const bId = b.categoryId ?? -1;
     return bId - aId;

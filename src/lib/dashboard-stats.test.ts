@@ -206,4 +206,17 @@ describe('groupBreakdownByParent', () => {
     const total = grouped.reduce((sum, p) => sum + p.percentage, 0);
     expect(total).toBe(100);
   });
+
+  test('passes an Unkategorisiert (null categoryId) bucket through unchanged', () => {
+    const points = [
+      { categoryId: null, categoryName: 'Unkategorisiert', amountCents: 1000, percentage: 100 },
+    ];
+    const categoriesById = new Map<number, { name: string; parentCategoryId?: number | null }>();
+
+    const grouped = groupBreakdownByParent(points, categoriesById);
+
+    expect(grouped).toEqual([
+      { categoryId: null, categoryName: 'Unkategorisiert', amountCents: 1000, percentage: 100 },
+    ]);
+  });
 });
