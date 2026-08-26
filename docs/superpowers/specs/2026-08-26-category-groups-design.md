@@ -58,8 +58,12 @@ export const categories = sqliteTable('categories', {
 bestehenden Umbenennen-Formular ein zusätzliches `<select>` "Oberkategorie":
 
 - Optionen: "Keine" plus alle Kategorien mit `parentCategoryId === null`, ausgenommen die
-  Kategorie selbst und jede Kategorie, die aktuell selbst als Oberkategorie einer anderen
-  Kategorie dient (siehe Guard unten) — verhindert eine dritte Ebene direkt in der Auswahl.
+  Kategorie selbst. Eine Kategorie, die bereits selbst als Oberkategorie für andere dient,
+  bleibt in dieser Liste wählbar — das ist der Normalfall beim Hinzufügen einer zweiten,
+  dritten usw. Kategorie zu einer bestehenden Gruppe. Die dritte-Ebene-Prävention sitzt
+  stattdessen ausschließlich serverseitig in `setCategoryParent` (Guards unten): sie
+  verhindert, dass die *bearbeitete* Kategorie selbst einen Parent bekommt, wenn sie schon
+  Kinder hat — nicht, dass sie als Parent für andere gewählt werden kann.
 - Ändern der Auswahl ruft sofort eine neue Server Action `setCategoryParent(categoryId,
   parentId | null)` auf (eigener kleiner State/Transition, analog zum bestehenden
   Umbenennen-Formular — kein gemeinsames Submit mit dem Namensfeld).
