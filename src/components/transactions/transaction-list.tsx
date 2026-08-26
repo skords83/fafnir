@@ -1,9 +1,9 @@
+import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { formatCents, formatDayHeading } from '@/lib/format';
 import { deriveTransactionDisplay } from '@/lib/transaction-display';
 import { groupTransactionsByDay } from '@/lib/transaction-grouping';
 import { cn } from '@/lib/utils';
-import { CategoryBadge } from './category-badge';
 
 export interface TransactionListRow {
   id: number;
@@ -13,9 +13,6 @@ export interface TransactionListRow {
   amountCents: number;
   merchantKey: string;
   effectiveCategory: { id: number; name: string } | null;
-  overrideCategoryId: number | null;
-  merchantRuleCategoryId: number | null;
-  merchantRulePurposeContains: string | null;
 }
 
 function amountColorClass(amountCents: number): string {
@@ -24,16 +21,9 @@ function amountColorClass(amountCents: number): string {
   return 'text-foreground';
 }
 
-function TransactionRow({
-  tx,
-  currency,
-  categories,
-}: {
-  tx: TransactionListRow;
-  currency: string;
-  categories: { id: number; name: string }[];
-}) {
+function TransactionRow({ tx, currency }: { tx: TransactionListRow; currency: string }) {
   const { title, context } = deriveTransactionDisplay(tx);
+  const categorizeHref = `/categorize?merchant=${encodeURIComponent(tx.merchantKey)}#group-${encodeURIComponent(tx.merchantKey)}`;
 
   return (
     <li className="px-4 py-3">
@@ -44,28 +34,17 @@ function TransactionRow({
         </span>
       </div>
       {context && <p className="mt-0.5 truncate text-xs text-muted-foreground">{context}</p>}
-      <CategoryBadge
-        transactionId={tx.id}
-        merchantKey={tx.merchantKey}
-        effectiveCategory={tx.effectiveCategory}
-        overrideCategoryId={tx.overrideCategoryId}
-        merchantRuleCategoryId={tx.merchantRuleCategoryId}
-        merchantRulePurposeContains={tx.merchantRulePurposeContains}
-        categories={categories}
-      />
+      <Link
+        href={categorizeHref}
+        className="mt-1 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+      >
+        {tx.effectiveCategory ? tx.effectiveCategory.name : 'Unkategorisiert'}
+      </Link>
     </li>
   );
 }
 
-export function TransactionList({
-  rows,
-  currency,
-  categories,
-}: {
-  rows: TransactionListRow[];
-  currency: string;
-  categories: { id: number; name: string }[];
-}) {
+export function TransactionList({ rows, currency }: { rows: TransactionListRow[]; currency: string }) {
   if (rows.length === 0) {
     return <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground">Keine Buchungen.</p>;
   }
@@ -81,7 +60,7 @@ export function TransactionList({
           </h3>
           <ul className="divide-y divide-border rounded-lg border border-border bg-card">
             {group.featured.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} currency={currency} categories={categories} />
+              <TransactionRow key={tx.id} tx={tx} currency={currency} />
             ))}
             {group.collapsed && (
               <li>
@@ -97,7 +76,7 @@ export function TransactionList({
                   </summary>
                   <ul className="divide-y divide-border border-t border-border">
                     {group.collapsed.transactions.map((tx) => (
-                      <TransactionRow key={tx.id} tx={tx} currency={currency} categories={categories} />
+                      <TransactionRow key={tx.id} tx={tx} currency={currency} />
                     ))}
                   </ul>
                 </details>
