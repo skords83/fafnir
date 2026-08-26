@@ -41,14 +41,58 @@ function usePrefersDarkMode() {
   return useSyncExternalStore(subscribeToTheme, getIsDarkSnapshot, getIsDarkServerSnapshot);
 }
 
-export function CategoryPieChart({ data, currency }: { data: CategoryBreakdownPoint[]; currency: string }) {
+export function CategoryPieChart({
+  data,
+  dataByParent,
+  hasGroups,
+  currency,
+}: {
+  data: CategoryBreakdownPoint[];
+  dataByParent: CategoryBreakdownPoint[];
+  hasGroups: boolean;
+  currency: string;
+}) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [mode, setMode] = useState<'category' | 'parent'>('category');
   const prefersDark = usePrefersDarkMode();
 
-  if (data.length === 0) {
+  function selectMode(next: 'category' | 'parent') {
+    setMode(next);
+    setActiveIndex(null);
+  }
+
+  const activeData = mode === 'category' ? data : dataByParent;
+
+  const modeToggle = hasGroups && (
+    <div className="mb-2 flex justify-center gap-1">
+      <button
+        type="button"
+        onClick={() => selectMode('category')}
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          mode === 'category' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+        }`}
+      >
+        Kategorie
+      </button>
+      <button
+        type="button"
+        onClick={() => selectMode('parent')}
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          mode === 'parent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+        }`}
+      >
+        Oberkategorie
+      </button>
+    </div>
+  );
+
+  if (activeData.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Keine Ausgaben in diesem Zeitraum
+      <div>
+        {modeToggle}
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          Keine Ausgaben in diesem Zeitraum
+        </div>
       </div>
     );
   }
@@ -56,10 +100,11 @@ export function CategoryPieChart({ data, currency }: { data: CategoryBreakdownPo
   const colors = prefersDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS_LIGHT;
   const otherColor = prefersDark ? OTHER_COLOR_DARK : OTHER_COLOR_LIGHT;
   const surfaceColor = prefersDark ? '#1a1a19' : '#fcfcfb';
-  const slices = buildSlices(data, colors, otherColor);
+  const slices = buildSlices(activeData, colors, otherColor);
 
   return (
     <div className="w-full">
+      {modeToggle}
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
