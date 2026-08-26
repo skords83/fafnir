@@ -143,3 +143,79 @@ export function calculateCategoryBreakdown(
   });
   return result;
 }
+
+export function groupBreakdownByParent(
+  points: CategoryBreakdownPoint[],
+  categoriesById: Map<number, { name: string; parentCategoryId?: number | null }>
+): CategoryBreakdownPoint[] {
+  const bucketMap = new Map<
+    string,
+    { categoryId: number | null; name: string; amount: number }
+  >();
+
+  // Re-bucket each point by its parent category
+  for (const point of points) {
+    if (point.categoryId === null) {
+      // Categories with null categoryId stay as-is
+      const mapKey = `null:${point.categoryName}`;
+      if (!bucketMap.has(mapKey)) {
+        bucketMap.set(mapKey, {
+          categoryId: null,
+          name: point.categoryName,
+          amount: 0,
+        });
+      }
+      const entry = bucketMap.get(mapKey)!;
+      entry.amount += point.amountCents;
+    } else {
+      const category = categoriesById.get(point.categoryId);
+      if (!category) {
+        continue; // Skip if category not found in map
+      }
+
+      // Determine bucket: use parent if exists, otherwise use category itself
+      const parentId = category.parentCategoryId ?? point.categoryId;
+      const bucketCategory = categoriesById.get(parentId);
+      const bucketName = bucketCategory?.name ?? point.categoryName;
+      const mapKey = `${parentId}:${bucketName}`;
+
+      if (!bucketMap.has(mapKey)) {
+        bucketMap.set(mapKey, {
+          categoryId: parentId,
+          name: bucketName,
+          amount: 0,
+        });
+      }
+      const entry = bucketMap.get(mapKey)!;
+      entry.amount += point.amountCents;
+    }
+  }
+
+  // Calculate total expenses to compute percentages
+  const totalExpenses = Array.from(bucketMap.values()).reduce(
+    (sum, entry) => sum + entry.amount,
+    0
+  );
+
+  // Convert to result array, sorted by amount descending
+  const result: CategoryBreakdownPoint[] = Array.from(bucketMap).map(
+    ([, { categoryId, name, amount }]) => ({
+      categoryId,
+      categoryName: name,
+      amountCents: amount,
+      percentage:
+        totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
+    })
+  );
+
+  result.sort((a, b) => {
+    if (b.amountCents !== a.amountCents) {
+      return b.amountCents - a.amountCents;
+    }
+    // When amounts are equal, sort by categoryId descending (nulls last)
+    const aId = a.categoryId ?? -1;
+    const bId = b.categoryId ?? -1;
+    return bId - aId;
+  });
+  return result;
+}
