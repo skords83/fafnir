@@ -181,6 +181,35 @@ export async function deleteCategory(categoryId: number): Promise<void> {
 }
 
 /**
+ * Sets (or clears) a category's Oberkategorie (parent). `parentId: null` always clears it.
+ * A non-null `parentId` is rejected when it would create a third nesting level: the
+ * category can't be its own parent, the target parent must not itself have a parent, and
+ * the category being edited must not itself already be used as a parent by another
+ * category (design spec, Oberkategorien-Anweisung §Datenmodell).
+ */
+export async function setCategoryParent(categoryId: number, parentId: number | null): Promise<void> {
+  if (parentId === null) {
+    await db.update(categories).set({ parentCategoryId: null }).where(eq(categories.id, categoryId));
+    return;
+  }
+  if (parentId === categoryId) {
+    throw new Error('Eine Kategorie kann nicht ihre eigene Oberkategorie sein.');
+  }
+  const [parent] = await db.select().from(categories).where(eq(categories.id, parentId));
+  if (!parent) {
+    throw new Error('Diese Oberkategorie existiert nicht mehr.');
+  }
+  if (parent.parentCategoryId !== null) {
+    throw new Error(`„${parent.name}" hat selbst eine Oberkategorie und kann nicht als Oberkategorie verwendet werden.`);
+  }
+  const [existingChild] = await db.select().from(categories).where(eq(categories.parentCategoryId, categoryId));
+  if (existingChild) {
+    throw new Error('Diese Kategorie ist selbst Oberkategorie anderer Kategorien und kann keine eigene Oberkategorie erhalten.');
+  }
+  await db.update(categories).set({ parentCategoryId: parentId }).where(eq(categories.id, categoryId));
+}
+
+/**
  * All transactions for one merchant (Gegenpartei), newest first, with their effective
  * category and per-row rule-picker prefill data. Powers `/categorize`'s per-group,
  * lazy-loaded transaction list (design spec §3).

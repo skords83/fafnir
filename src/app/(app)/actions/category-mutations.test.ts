@@ -336,6 +336,76 @@ describe('deleteCategory', () => {
   });
 });
 
+describe('setCategoryParent', () => {
+  test('assigns a parent to a category that has none yet', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [child] = await db.insert(schema.categories).values({ name: 'Gas' }).returning();
+    const [parent] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+
+    await setCategoryParent(child.id, parent.id);
+
+    const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, child.id));
+    expect(updated.parentCategoryId).toBe(parent.id);
+  });
+
+  test('clearing a parent with null is always allowed', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [parent] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    const [child] = await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: parent.id }).returning();
+
+    await setCategoryParent(child.id, null);
+
+    const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, child.id));
+    expect(updated.parentCategoryId).toBeNull();
+  });
+
+  test('rejects a category being its own parent', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [category] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+
+    await expect(setCategoryParent(category.id, category.id)).rejects.toThrow(/eigene Oberkategorie/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, category.id));
+    expect(unchanged.parentCategoryId).toBeNull();
+  });
+
+  test('rejects assigning a parent that itself already has a parent', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [grandparent] = await db.insert(schema.categories).values({ name: 'Fixkosten' }).returning();
+    const [parent] = await db.insert(schema.categories).values({ name: 'Wohnen', parentCategoryId: grandparent.id }).returning();
+    const [child] = await db.insert(schema.categories).values({ name: 'Gas' }).returning();
+
+    await expect(setCategoryParent(child.id, parent.id)).rejects.toThrow(/hat selbst eine Oberkategorie/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, child.id));
+    expect(unchanged.parentCategoryId).toBeNull();
+  });
+
+  test('rejects giving a parent to a category that is itself used as a parent', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [wohnen] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: wohnen.id });
+    const [fixkosten] = await db.insert(schema.categories).values({ name: 'Fixkosten' }).returning();
+
+    await expect(setCategoryParent(wohnen.id, fixkosten.id)).rejects.toThrow(/selbst Oberkategorie anderer Kategorien/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, wohnen.id));
+    expect(unchanged.parentCategoryId).toBeNull();
+  });
+
+  test('allows assigning a second child to a parent that already has one', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [wohnen] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: wohnen.id });
+    const [wasser] = await db.insert(schema.categories).values({ name: 'Wasser' }).returning();
+
+    await setCategoryParent(wasser.id, wohnen.id);
+
+    const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, wasser.id));
+    expect(updated.parentCategoryId).toBe(wohnen.id);
+  });
+});
+
 describe('getMerchantTransactionsForKey', () => {
   test("returns only this merchant's transactions, newest first, with resolved category", async () => {
     const { db, schema, getMerchantTransactionsForKey } = await freshDb();

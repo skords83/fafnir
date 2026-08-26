@@ -8,6 +8,7 @@ import {
   deleteCategory as deleteCategoryMutation,
   getMerchantTransactionsForKey,
   renameCategory as renameCategoryMutation,
+  setCategoryParent as setCategoryParentMutation,
   type CategoryTarget,
   type MerchantTransactionRow,
 } from './category-mutations';
@@ -71,6 +72,17 @@ export async function deleteCategory(categoryId: number): Promise<ActionResult> 
     await deleteCategoryMutation(categoryId);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Fehler beim Löschen.' };
+  }
+  revalidateCategorizedPages();
+  return { ok: true };
+}
+
+export async function setCategoryParent(categoryId: number, parentId: number | null): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await setCategoryParentMutation(categoryId, parentId);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Fehler beim Speichern.' };
   }
   revalidateCategorizedPages();
   return { ok: true };
