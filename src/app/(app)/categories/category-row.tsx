@@ -6,10 +6,12 @@ import {
   renameCategory,
   setCategoryParent,
 } from '@/app/(app)/actions/categories';
+import { CATEGORY_HAS_CHILDREN_MESSAGE } from '@/lib/category-messages';
 
 export interface CategoryUsage {
   transactionCount: number;
   ruleCount: number;
+  childCount: number;
 }
 
 export function CategoryRow({
@@ -32,7 +34,7 @@ export function CategoryRow({
 
   const trimmed = name.trim();
   const canRename = trimmed !== '' && trimmed !== persistedName;
-  const isInUse = usage.transactionCount > 0 || usage.ruleCount > 0;
+  const isInUse = usage.transactionCount > 0 || usage.ruleCount > 0 || usage.childCount > 0;
 
   function handleRename(event: FormEvent) {
     event.preventDefault();
@@ -73,6 +75,9 @@ export function CategoryRow({
       ? `${usage.transactionCount} Buchung${usage.transactionCount === 1 ? '' : 'en'}`
       : null,
     usage.ruleCount > 0 ? `${usage.ruleCount} Regel${usage.ruleCount === 1 ? '' : 'n'}` : null,
+    usage.childCount > 0
+      ? `${usage.childCount} Kategorie${usage.childCount === 1 ? '' : 'n'} als Oberkategorie`
+      : null,
   ].filter((part): part is string => part !== null);
 
   return (
@@ -108,11 +113,7 @@ export function CategoryRow({
             value={category.parentCategoryId ?? ''}
             onChange={(e) => handleParentChange(e.target.value)}
             disabled={isPending || hasChildren}
-            title={
-              hasChildren
-                ? 'Diese Kategorie ist selbst Oberkategorie anderer Kategorien und kann keine eigene Oberkategorie erhalten.'
-                : undefined
-            }
+            title={hasChildren ? CATEGORY_HAS_CHILDREN_MESSAGE : undefined}
             aria-label={`Oberkategorie von „${category.name}"`}
             className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-50"
           >

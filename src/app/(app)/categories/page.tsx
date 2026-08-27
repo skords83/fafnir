@@ -27,7 +27,7 @@ export default async function CategoriesPage() {
   const ungrouped: typeof rowsWithUsage = [];
   for (const row of rowsWithUsage) {
     const parentId = row.category.parentCategoryId;
-    if (parentId === null) {
+    if (parentId == null) {
       ungrouped.push(row);
     } else {
       if (!childrenByParentId.has(parentId)) {
@@ -77,21 +77,17 @@ export default async function CategoriesPage() {
             {groups.length > 0 && (
               <h2 className="mb-2 text-sm font-semibold text-foreground">Ohne Oberkategorie</h2>
             )}
-            {ungrouped.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Keine.</p>
-            ) : (
-              <ul className="divide-y divide-border rounded-lg border border-border bg-card">
-                {ungrouped.map(({ category, usage }) => (
-                  <CategoryRow
-                    key={category.id}
-                    category={category}
-                    usage={usage}
-                    parentOptions={parentOptions}
-                    hasChildren={hasChildrenIds.has(category.id)}
-                  />
-                ))}
-              </ul>
-            )}
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+              {ungrouped.map(({ category, usage }) => (
+                <CategoryRow
+                  key={category.id}
+                  category={category}
+                  usage={usage}
+                  parentOptions={parentOptions}
+                  hasChildren={hasChildrenIds.has(category.id)}
+                />
+              ))}
+            </ul>
           </div>
         </div>
       )}

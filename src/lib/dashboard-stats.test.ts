@@ -131,6 +131,28 @@ describe('groupBreakdownByParent', () => {
     });
   });
 
+  test("merges a parent category's own direct expenses with its children's", () => {
+    const points = [
+      { categoryId: 1, categoryName: 'Fruit', amountCents: 500, percentage: 25 },
+      { categoryId: 2, categoryName: 'Citrus', amountCents: 500, percentage: 25 },
+      { categoryId: 3, categoryName: 'Food', amountCents: 1000, percentage: 50 },
+    ];
+    const categoriesById = new Map([
+      [1, { name: 'Fruit', parentCategoryId: 3 }],
+      [2, { name: 'Citrus', parentCategoryId: 3 }],
+      [3, { name: 'Food', parentCategoryId: null }],
+    ]);
+
+    const grouped = groupBreakdownByParent(points, categoriesById);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toEqual({
+      categoryId: 3,
+      categoryName: 'Food',
+      amountCents: 2000,
+      percentage: 100,
+    });
+  });
+
   test('handles multiple parent categories correctly', () => {
     const points = [
       { categoryId: 1, categoryName: 'Apples', amountCents: 500, percentage: 17 },

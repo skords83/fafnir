@@ -231,7 +231,7 @@ describe('countCategoryUsage', () => {
 
     const usage = await countCategoryUsage(category.id);
 
-    expect(usage).toEqual({ transactionCount: 2, ruleCount: 1 });
+    expect(usage).toEqual({ transactionCount: 2, ruleCount: 1, childCount: 0 });
   });
 
   test('returns zero counts for an unused category', async () => {
@@ -240,7 +240,18 @@ describe('countCategoryUsage', () => {
 
     const usage = await countCategoryUsage(category.id);
 
-    expect(usage).toEqual({ transactionCount: 0, ruleCount: 0 });
+    expect(usage).toEqual({ transactionCount: 0, ruleCount: 0, childCount: 0 });
+  });
+
+  test('counts categories that use this one as their Oberkategorie', async () => {
+    const { db, schema, countCategoryUsage } = await freshDb();
+    const [wohnen] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: wohnen.id });
+    await db.insert(schema.categories).values({ name: 'Wasser', parentCategoryId: wohnen.id });
+
+    const usage = await countCategoryUsage(wohnen.id);
+
+    expect(usage).toEqual({ transactionCount: 0, ruleCount: 0, childCount: 2 });
   });
 });
 
@@ -334,6 +345,17 @@ describe('deleteCategory', () => {
 
     await expect(deleteCategory(category.id)).rejects.toThrow(/1 Buchung.*1 Regel|1 Regel.*1 Buchung/);
   });
+
+  test('deleting a category that is used as an Oberkategorie throws and leaves it intact', async () => {
+    const { db, schema, deleteCategory } = await freshDb();
+    const [wohnen] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: wohnen.id });
+
+    await expect(deleteCategory(wohnen.id)).rejects.toThrow(/1 Kategorie.*Oberkategorie/);
+
+    const remaining = await db.select().from(schema.categories).where(eq(schema.categories.id, wohnen.id));
+    expect(remaining).toHaveLength(1);
+  });
 });
 
 describe('setCategoryParent', () => {
@@ -403,6 +425,29 @@ describe('setCategoryParent', () => {
 
     const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, wasser.id));
     expect(updated.parentCategoryId).toBe(wohnen.id);
+  });
+
+  test('rejects a parent id that does not exist', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [child] = await db.insert(schema.categories).values({ name: 'Gas' }).returning();
+    const nonExistentParentId = child.id + 999;
+
+    await expect(setCategoryParent(child.id, nonExistentParentId)).rejects.toThrow(/existiert nicht mehr/);
+
+    const [unchanged] = await db.select().from(schema.categories).where(eq(schema.categories.id, child.id));
+    expect(unchanged.parentCategoryId).toBeNull();
+  });
+
+  test('re-points a child from one parent to another', async () => {
+    const { db, schema, setCategoryParent } = await freshDb();
+    const [wohnen] = await db.insert(schema.categories).values({ name: 'Wohnen' }).returning();
+    const [fixkosten] = await db.insert(schema.categories).values({ name: 'Fixkosten' }).returning();
+    const [child] = await db.insert(schema.categories).values({ name: 'Gas', parentCategoryId: wohnen.id }).returning();
+
+    await setCategoryParent(child.id, fixkosten.id);
+
+    const [updated] = await db.select().from(schema.categories).where(eq(schema.categories.id, child.id));
+    expect(updated.parentCategoryId).toBe(fixkosten.id);
   });
 });
 

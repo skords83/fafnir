@@ -2,6 +2,7 @@ import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, categories, merchantCategoryRules, transactions } from '@/db/schema';
 import { buildCategoryLookups, resolveTransactionCategory } from '@/lib/category-resolution';
+import { CATEGORY_HAS_CHILDREN_MESSAGE } from '@/lib/category-messages';
 import { getMerchantKey } from '@/lib/merchant-key';
 
 export type CategoryTarget =
@@ -107,15 +108,15 @@ export async function applyTransactionOverride(transactionId: number, target: Ca
 }
 
 /**
- * Counts how many transactions have this category as their manual override,
- * and how many merchant rules assign this category — the two ways a category
- * can be "in use". Always queried fresh (never trust a client-supplied count),
- * since this backs the delete-blocking check as well as the usage display on
- * the categories page.
+ * Counts how many transactions have this category as their manual override, how many
+ * merchant rules assign this category, and how many categories use it as their
+ * Oberkategorie (parent) — the three ways a category can be "in use". Always queried
+ * fresh (never trust a client-supplied count), since this backs the delete-blocking
+ * check as well as the usage display on the categories page.
  */
 export async function countCategoryUsage(
   categoryId: number
-): Promise<{ transactionCount: number; ruleCount: number }> {
+): Promise<{ transactionCount: number; ruleCount: number; childCount: number }> {
   const [{ value: transactionCount }] = await db
     .select({ value: count() })
     .from(transactions)
@@ -124,7 +125,11 @@ export async function countCategoryUsage(
     .select({ value: count() })
     .from(merchantCategoryRules)
     .where(eq(merchantCategoryRules.categoryId, categoryId));
-  return { transactionCount, ruleCount };
+  const [{ value: childCount }] = await db
+    .select({ value: count() })
+    .from(categories)
+    .where(eq(categories.parentCategoryId, categoryId));
+  return { transactionCount, ruleCount, childCount };
 }
 
 /** Renames a category. Throws a German-language error on an empty name or a name collision. */
@@ -155,18 +160,22 @@ export async function renameCategory(categoryId: number, name: string): Promise<
  * Deletes a category. Re-checks usage immediately before deleting (see
  * `countCategoryUsage`) and throws a German-language error naming the current
  * counts instead of deleting — `categories` is referenced by a NOT NULL FK from
- * `merchantCategoryRules.categoryId`, so an in-use category can never be
- * deleted out from under a rule.
+ * `merchantCategoryRules.categoryId`, and by its own self-referencing `parentCategoryId`
+ * FK from any category that uses it as an Oberkategorie, so an in-use category can never
+ * be deleted out from under a rule or a child category.
  */
 export async function deleteCategory(categoryId: number): Promise<void> {
-  const { transactionCount, ruleCount } = await countCategoryUsage(categoryId);
-  if (transactionCount > 0 || ruleCount > 0) {
+  const { transactionCount, ruleCount, childCount } = await countCategoryUsage(categoryId);
+  if (transactionCount > 0 || ruleCount > 0 || childCount > 0) {
     const parts: string[] = [];
     if (transactionCount > 0) {
       parts.push(`${transactionCount} Buchung${transactionCount === 1 ? '' : 'en'}`);
     }
     if (ruleCount > 0) {
       parts.push(`${ruleCount} Regel${ruleCount === 1 ? '' : 'n'}`);
+    }
+    if (childCount > 0) {
+      parts.push(`${childCount} Kategorie${childCount === 1 ? '' : 'n'} als Oberkategorie`);
     }
     throw new Error(`Kategorie wird noch von ${parts.join(' und ')} verwendet.`);
   }
@@ -204,7 +213,7 @@ export async function setCategoryParent(categoryId: number, parentId: number | n
   }
   const [existingChild] = await db.select().from(categories).where(eq(categories.parentCategoryId, categoryId));
   if (existingChild) {
-    throw new Error('Diese Kategorie ist selbst Oberkategorie anderer Kategorien und kann keine eigene Oberkategorie erhalten.');
+    throw new Error(CATEGORY_HAS_CHILDREN_MESSAGE);
   }
   await db.update(categories).set({ parentCategoryId: parentId }).where(eq(categories.id, categoryId));
 }
